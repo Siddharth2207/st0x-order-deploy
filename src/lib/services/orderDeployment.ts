@@ -1,117 +1,98 @@
 /**
- * Fixed-spread order deployment service.
+ * Generic order deployment service.
  *
- * Builds DotrainOrderGui instances for buy and sell sides of a fixed-spread
- * strategy and returns the raw DeploymentTransactionArgs ready to be sent
- * to either an EOA wallet or a SAFE.
+ * Fetches the .rain strategy file and shared settings.yaml from GitHub,
+ * then builds a DotrainOrderGui instance for any strategy type and returns
+ * DeploymentTransactionArgs ready for an EOA wallet or SAFE.
+ *
+ * All strategy-specific params (field values, token keys, deposit amounts)
+ * come from the OrderConfig — add new strategy types purely in tokens.yaml.
  */
 
-import { DotrainRegistry } from '@rainlanguage/orderbook';
-import type { DeploymentTransactionArgs } from '@rainlanguage/orderbook';
-import type { StrategyConfig } from '$lib/config/strategies';
+import { DotrainOrderGui } from "@rainlanguage/orderbook";
+import type { DeploymentTransactionArgs } from "@rainlanguage/orderbook";
+import type { OrderConfig } from "$lib/config/strategies";
+import { REGISTRY_COMMIT } from "$lib/config/strategies";
 
-// Pinned to the commit used in the main st0x app.
-const RAIN_STRATEGIES_COMMIT = '2c8192e9137736507041ebff820b0e7b5b29f0d2';
-const REGISTRY_URL = `https://raw.githubusercontent.com/rainlanguage/rain.strategies/${RAIN_STRATEGIES_COMMIT}/registry`;
+const BASE_URL = `https://raw.githubusercontent.com/rainlanguage/rain.strategies/${REGISTRY_COMMIT}`;
 
-let registryPromise: Promise<DotrainRegistry> | null = null;
+// Cache raw text fetches so each file is only downloaded once per session
+const fetchCache = new Map<string, Promise<string>>();
 
-async function getRegistry(): Promise<DotrainRegistry> {
-	if (!registryPromise) {
-		registryPromise = (async () => {
-			const result = await DotrainRegistry.new(REGISTRY_URL);
-			if (result.error) {
-				registryPromise = null;
-				throw new Error(result.error.readableMsg);
-			}
-			return result.value;
-		})();
-	}
-	return registryPromise;
+function fetchText(url: string): Promise<string> {
+  if (!fetchCache.has(url)) {
+    fetchCache.set(
+      url,
+      fetch(url).then((r) => {
+        if (!r.ok) throw new Error(`Failed to fetch ${url}: ${r.statusText}`);
+        return r.text();
+      }),
+    );
+  }
+  return fetchCache.get(url)!;
 }
 
-export type OrderSide = 'buy' | 'sell';
+/**
+ * Fetch the .rain file for a strategy type and the shared settings.yaml,
+ * then instantiate a DotrainOrderGui for the given deployment key.
+ */
+async function buildGui(
+  strategyType: string,
+  deploymentKey: string,
+): Promise<DotrainOrderGui> {
+  const [dotrain, settings] = await Promise.all([
+    fetchText(`${BASE_URL}/src/${strategyType}.rain`),
+    fetchText(`${BASE_URL}/settings.yaml`),
+  ]);
+
+  const result = await DotrainOrderGui.newWithDeployment(
+    dotrain,
+    [settings],
+    deploymentKey,
+  );
+  if (result.error) throw new Error(result.error.readableMsg);
+  return result.value;
+}
 
 export interface DeploymentResult {
-	side: OrderSide;
-	composedRainlang: string;
-	args: DeploymentTransactionArgs;
+  label: string;
+  composedRainlang: string;
+  args: DeploymentTransactionArgs;
 }
 
 /**
- * Build deployment args for one side (buy or sell) of a fixed-spread strategy.
- *
- * Buy order:
- *   - deployment: base-pyth-inv (inverted price: USDC/asset)
- *   - output token: USDC (the order sells USDC to acquire the asset)
- *   - input token: asset (what the order receives)
- *   - deposit: USDC
- *
- * Sell order:
- *   - deployment: base-pyth (normal price: asset/USDC)
- *   - output token: asset (the order sells the asset)
- *   - input token: USDC (what the order receives)
- *   - deposit: asset
+ * Build deployment args for a single order.
+ * Fully strategy-agnostic — driven entirely by the OrderConfig.
  */
 export async function buildOrderDeployment(
-	strategy: StrategyConfig,
-	side: OrderSide,
-	ownerAddress: string
+  order: OrderConfig,
+  ownerAddress: string,
 ): Promise<DeploymentResult> {
-	const registry = await getRegistry();
+  const gui = await buildGui(order.strategyType, order.deploymentKey);
 
-	// fixed-spread has two deployments:
-	//   base-pyth     → normal price feed, suitable for sell side (asset → USDC)
-	//   base-pyth-inv → inverted price feed, suitable for buy side (USDC → asset)
-	const deploymentKey = side === 'sell' ? 'base-pyth' : 'base-pyth-inv';
+  for (const [key, address] of Object.entries(order.selectTokens)) {
+    await gui.setSelectToken(key, address);
+  }
 
-	const guiResult = await registry.getGui('fixed-spread', deploymentKey);
-	if (guiResult.error) throw new Error(guiResult.error.readableMsg);
-	const gui = guiResult.value;
+  for (const [binding, value] of Object.entries(order.fieldValues)) {
+    gui.setFieldValue(binding, value);
+  }
 
-	if (side === 'sell') {
-		// Sell: output = asset, input = USDC
-		await gui.setSelectToken('output', strategy.outputToken.address);
-		await gui.setSelectToken('input', strategy.inputToken.address);
-		if (strategy.depositOutputAmount !== '0') {
-			gui.setDeposit('output', strategy.depositOutputAmount);
-		}
-	} else {
-		// Buy: output = USDC (order sells USDC, receives asset), input = asset
-		await gui.setSelectToken('output', strategy.inputToken.address);
-		await gui.setSelectToken('input', strategy.outputToken.address);
-		if (strategy.depositInputAmount !== '0') {
-			gui.setDeposit('output', strategy.depositInputAmount);
-		}
-	}
+  for (const [tokenKey, amount] of Object.entries(order.deposits)) {
+    if (amount && amount !== "0") {
+      gui.setDeposit(tokenKey, amount);
+    }
+  }
 
-	gui.setFieldValue('pyth-pair', strategy.pythFeedId);
-	gui.setFieldValue('baseline-multiplier', strategy.baselineMultiplier);
-	gui.setFieldValue('oracle-price-timeout', strategy.oraclePriceTimeout);
+  const rainlangResult = await gui.getComposedRainlang();
+  if (rainlangResult.error) throw new Error(rainlangResult.error.readableMsg);
 
-	const rainlangResult = await gui.getComposedRainlang();
-	if (rainlangResult.error) throw new Error(rainlangResult.error.readableMsg);
+  const argsResult = await gui.getDeploymentTransactionArgs(ownerAddress);
+  if (argsResult.error) throw new Error(argsResult.error.readableMsg);
 
-	const argsResult = await gui.getDeploymentTransactionArgs(ownerAddress);
-	if (argsResult.error) throw new Error(argsResult.error.readableMsg);
-
-	return {
-		side,
-		composedRainlang: rainlangResult.value,
-		args: argsResult.value
-	};
-}
-
-/**
- * Build both buy and sell deployments in parallel.
- */
-export async function buildBothOrderDeployments(
-	strategy: StrategyConfig,
-	ownerAddress: string
-): Promise<{ buy: DeploymentResult; sell: DeploymentResult }> {
-	const [buy, sell] = await Promise.all([
-		buildOrderDeployment(strategy, 'buy', ownerAddress),
-		buildOrderDeployment(strategy, 'sell', ownerAddress)
-	]);
-	return { buy, sell };
+  return {
+    label: order.label,
+    composedRainlang: rainlangResult.value,
+    args: argsResult.value,
+  };
 }

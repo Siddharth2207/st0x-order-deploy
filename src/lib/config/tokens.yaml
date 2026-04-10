@@ -1,0 +1,427 @@
+# st0x order deploy — token & strategy configuration
+#
+# registryCommit: the rain.strategies git commit to resolve strategy files from.
+# Bump this to pick up new strategy versions.
+registryCommit: "3379ca3f0e677731859fcbb56ad89b543a748c68"
+# ---------------------------------------------------------------------------
+# YAML anchors (reused below — the _anchors key is ignored by the app)
+# ---------------------------------------------------------------------------
+_anchors:
+  # ── Base mainnet token addresses ──────────────────────────────────────────
+  base_usdc: &base_usdc "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  wt_mstr: &wt_mstr "0xFF05E1bD696900dc6A52CA35Ca61Bb1024eDa8e2"
+  wt_tsla: &wt_tsla "0x219A8d384a10BF19b9f24cB5cC53F79Dd0e5A03D"
+  wt_nvda: &wt_nvda "0xFb5B41acdbA20a3230F84BE995173CFb98b8D6E7"
+  wt_amzn: &wt_amzn "0x997baE3EC193a249596d3708C3fAB7C501Bb8a53"
+  wt_spym: &wt_spym "0x31C2C14134e6E3B7ef9478297F199331133Fc2d8"
+  wt_iau: &wt_iau "0x1E46d7eFef64A833AFB1CD49299a7AD5B439f4d8"
+  wt_sivr: &wt_sivr "0xEB7F3E4093C9d68253b6104FbbfF561F3eC0442F"
+  wt_coin: &wt_coin "0x5cDa0E1CA4ce2af96315f7F8963C85399c172204"
+  wt_crcl: &wt_crcl "0x8AFba81DEc38DE0A18E2Df5E1967a7493651eebf"
+  wt_bmnr: &wt_bmnr "0x2512EC661f0bA089c275EA105E31bAD6FcFcf319"
+  wt_pplt: &wt_pplt "0x82f5BAEE1076334357a34A19E04f7c282D51cE47"
+  # Placeholders — fill in once deployed
+  wt_goog: &wt_goog "0x0000000000000000000000000000000000000000"
+  wt_aapl: &wt_aapl "0x0000000000000000000000000000000000000000"
+  # ── Pyth price feed IDs (Equity.US.X/USD) ────────────────────────────────
+  feed_mstr: &feed_mstr "0x924571756974792e55532e4d5354522f55534400000000000000000000000000"
+  feed_tsla: &feed_tsla "0x924571756974792e55532e54534c412f55534400000000000000000000000000"
+  feed_nvda: &feed_nvda "0x924571756974792e55532e4e5644412f55534400000000000000000000000000"
+  feed_amzn: &feed_amzn "0x924571756974792e55532e414d5a4e2f55534400000000000000000000000000"
+  feed_splg: &feed_splg "0x924571756974792e55532e53504c472f55534400000000000000000000000000" # wtSPYM → SPLG/USD (S&P 500)
+  feed_iau: &feed_iau "0x914571756974792e55532e4941552f5553440000000000000000000000000000"
+  feed_sivr: &feed_sivr "0x924571756974792e55532e534956522f55534400000000000000000000000000"
+  feed_coin: &feed_coin "0x924571756974792e55532e434f494e2f55534400000000000000000000000000"
+  feed_crcl: &feed_crcl "0x924571756974792e55532e4352434c2f55534400000000000000000000000000"
+  feed_bmnr: &feed_bmnr "0x924571756974792e55532e424d4e522f55534400000000000000000000000000"
+  feed_pplt: &feed_pplt "0x924571756974792e55532e50504c542f55534400000000000000000000000000"
+  feed_goog: &feed_goog "0x924571756974792e55532e474f4f472f55534400000000000000000000000000"
+  feed_aapl: &feed_aapl "0x924571756974792e55532e4141504c2f55534400000000000000000000000000"
+# ---------------------------------------------------------------------------
+# Strategy definitions
+#
+# Each strategy has a list of orders. One card is rendered per order in the UI.
+# strategyType: the key passed to registry.getGui() — matches the .rain file name
+# deploymentKey: the deployment within that strategy file
+# selectTokens:  { guiTokenKey: "0xAddress" }
+# fieldValues:   { bindingName: "value" }
+# deposits:      { guiTokenKey: "humanAmount" } — "0" entries are skipped
+# ---------------------------------------------------------------------------
+strategies:
+  # ── wtMSTR / USDC ─────────────────────────────────────────────────────────
+  - name: "wtMSTR/USDC"
+    orders:
+      - label: "Buy wtMSTR"
+        description: "spend USDC → receive wtMSTR at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_mstr
+        fieldValues:
+          pyth-pair: *feed_mstr
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtMSTR"
+        description: "sell wtMSTR → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_mstr
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_mstr
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtTSLA / USDC ─────────────────────────────────────────────────────────
+  - name: "wtTSLA/USDC"
+    orders:
+      - label: "Buy wtTSLA"
+        description: "spend USDC → receive wtTSLA at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_tsla
+        fieldValues:
+          pyth-pair: *feed_tsla
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtTSLA"
+        description: "sell wtTSLA → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_tsla
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_tsla
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtNVDA / USDC ─────────────────────────────────────────────────────────
+  - name: "wtNVDA/USDC"
+    orders:
+      - label: "Buy wtNVDA"
+        description: "spend USDC → receive wtNVDA at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_nvda
+        fieldValues:
+          pyth-pair: *feed_nvda
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtNVDA"
+        description: "sell wtNVDA → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_nvda
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_nvda
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtAMZN / USDC ─────────────────────────────────────────────────────────
+  - name: "wtAMZN/USDC"
+    orders:
+      - label: "Buy wtAMZN"
+        description: "spend USDC → receive wtAMZN at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_amzn
+        fieldValues:
+          pyth-pair: *feed_amzn
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtAMZN"
+        description: "sell wtAMZN → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_amzn
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_amzn
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtSPYM / USDC  (uses SPLG/USD Pyth feed — S&P 500) ───────────────────
+  - name: "wtSPYM/USDC"
+    orders:
+      - label: "Buy wtSPYM"
+        description: "spend USDC → receive wtSPYM at Pyth SPLG price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_spym
+        fieldValues:
+          pyth-pair: *feed_splg
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtSPYM"
+        description: "sell wtSPYM → receive USDC at Pyth SPLG price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_spym
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_splg
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtIAU / USDC ──────────────────────────────────────────────────────────
+  - name: "wtIAU/USDC"
+    orders:
+      - label: "Buy wtIAU"
+        description: "spend USDC → receive wtIAU at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_iau
+        fieldValues:
+          pyth-pair: *feed_iau
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtIAU"
+        description: "sell wtIAU → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_iau
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_iau
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtSIVR / USDC ─────────────────────────────────────────────────────────
+  - name: "wtSIVR/USDC"
+    orders:
+      - label: "Buy wtSIVR"
+        description: "spend USDC → receive wtSIVR at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_sivr
+        fieldValues:
+          pyth-pair: *feed_sivr
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtSIVR"
+        description: "sell wtSIVR → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_sivr
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_sivr
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtCOIN / USDC ─────────────────────────────────────────────────────────
+  - name: "wtCOIN/USDC"
+    orders:
+      - label: "Buy wtCOIN"
+        description: "spend USDC → receive wtCOIN at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_coin
+        fieldValues:
+          pyth-pair: *feed_coin
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtCOIN"
+        description: "sell wtCOIN → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_coin
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_coin
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtCRCL / USDC ─────────────────────────────────────────────────────────
+  - name: "wtCRCL/USDC"
+    orders:
+      - label: "Buy wtCRCL"
+        description: "spend USDC → receive wtCRCL at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_crcl
+        fieldValues:
+          pyth-pair: *feed_crcl
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtCRCL"
+        description: "sell wtCRCL → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_crcl
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_crcl
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtBMNR / USDC ─────────────────────────────────────────────────────────
+  - name: "wtBMNR/USDC"
+    orders:
+      - label: "Buy wtBMNR"
+        description: "spend USDC → receive wtBMNR at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_bmnr
+        fieldValues:
+          pyth-pair: *feed_bmnr
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtBMNR"
+        description: "sell wtBMNR → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_bmnr
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_bmnr
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtPPLT / USDC ─────────────────────────────────────────────────────────
+  - name: "wtPPLT/USDC"
+    orders:
+      - label: "Buy wtPPLT"
+        description: "spend USDC → receive wtPPLT at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_pplt
+        fieldValues:
+          pyth-pair: *feed_pplt
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtPPLT"
+        description: "sell wtPPLT → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_pplt
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_pplt
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtGOOG / USDC  (address TBD) ─────────────────────────────────────────
+  - name: "wtGOOG/USDC"
+    orders:
+      - label: "Buy wtGOOG"
+        description: "spend USDC → receive wtGOOG at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_goog
+        fieldValues:
+          pyth-pair: *feed_goog
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtGOOG"
+        description: "sell wtGOOG → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_goog
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_goog
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+  # ── wtAAPL / USDC  (address TBD) ─────────────────────────────────────────
+  - name: "wtAAPL/USDC"
+    orders:
+      - label: "Buy wtAAPL"
+        description: "spend USDC → receive wtAAPL at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_aapl
+        fieldValues:
+          pyth-pair: *feed_aapl
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+      - label: "Sell wtAAPL"
+        description: "sell wtAAPL → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_aapl
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_aapl
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"

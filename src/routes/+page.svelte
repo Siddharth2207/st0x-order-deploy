@@ -3,12 +3,8 @@
 	import { injected } from '@wagmi/connectors';
 	import { wagmiConfig, signerAddress, connected } from 'svelte-wagmi';
 	import { get } from 'svelte/store';
-	import { STRATEGIES, type StrategyConfig } from '$lib/config/strategies';
-	import {
-		buildOrderDeployment,
-		type DeploymentResult,
-		type OrderSide
-	} from '$lib/services/orderDeployment';
+	import { STRATEGIES, type StrategyConfig, type OrderConfig } from '$lib/config/strategies';
+	import { buildOrderDeployment, type DeploymentResult } from '$lib/services/orderDeployment';
 	import { sendOrderTransaction } from '$lib/stores/wallet';
 	import { proposeApprovalsToSafe, proposeToSafe } from '$lib/services/safeDeployment';
 
@@ -38,8 +34,8 @@
 
 	function selectStrategy(s: StrategyConfig) {
 		selectedStrategy = s;
-		buyState = emptyState();
-		sellState = emptyState();
+		orderStates = s.orders.map((o) => emptyState(o));
+		showCustomize = s.orders.map(() => false);
 	}
 
 	// ---------------------------------------------------------------------------
@@ -53,46 +49,77 @@
 		safeTxHash: string | null;
 		safeAppUrl: string | null;
 		error: string | null;
+		// Editable copies of the YAML defaults — these are what actually get deployed
+		customFieldValues: Record<string, string>;
+		customDeposits: Record<string, string>;
 	};
 
-	function emptyState(): OrderState {
+	function emptyState(order: OrderConfig): OrderState {
 		return {
 			status: 'idle',
 			result: null,
 			txHash: null,
 			safeTxHash: null,
 			safeAppUrl: null,
-			error: null
+			error: null,
+			customFieldValues: { ...order.fieldValues },
+			customDeposits: { ...order.deposits }
 		};
 	}
 
-	let buyState: OrderState = emptyState();
-	let sellState: OrderState = emptyState();
+	let orderStates: OrderState[] = selectedStrategy.orders.map((o) => emptyState(o));
+	let showCustomize: boolean[] = selectedStrategy.orders.map(() => false);
 
-	function getState(side: OrderSide): OrderState {
-		return side === 'buy' ? buyState : sellState;
+	function setOrderState(i: number, patch: Partial<OrderState>) {
+		const next = [...orderStates];
+		next[i] = { ...next[i], ...patch };
+		orderStates = next;
 	}
 
-	function setState(side: OrderSide, patch: Partial<OrderState>) {
-		const next = { ...getState(side), ...patch };
-		if (side === 'buy') buyState = next;
-		else sellState = next;
+	function toggleCustomize(i: number) {
+		const next = [...showCustomize];
+		next[i] = !next[i];
+		showCustomize = next;
+	}
+
+	function resetCustomize(i: number) {
+		const order = selectedStrategy.orders[i];
+		setOrderState(i, {
+			customFieldValues: { ...order.fieldValues },
+			customDeposits: { ...order.deposits }
+		});
+	}
+
+	// Friendly display label for a binding key, e.g. "baseline-multiplier" → "baseline multiplier"
+	function fmtKey(k: string) {
+		return k.replace(/-/g, ' ');
 	}
 
 	// ---------------------------------------------------------------------------
 	// Build order (preview)
 	// ---------------------------------------------------------------------------
 
-	async function buildOrder(side: OrderSide) {
+	async function buildOrder(i: number) {
 		const addr = get(signerAddress);
 		if (!addr) return;
 
-		setState(side, { status: 'loading', error: null });
+		const s = orderStates[i];
+		// Merge custom params over the base order config
+		const customizedOrder: OrderConfig = {
+			...selectedStrategy.orders[i],
+			fieldValues: s.customFieldValues,
+			deposits: s.customDeposits
+		};
+
+		setOrderState(i, { status: 'loading', error: null });
 		try {
-			const result = await buildOrderDeployment(selectedStrategy, side, addr);
-			setState(side, { status: 'ready', result });
+			const result = await buildOrderDeployment(customizedOrder, addr);
+			setOrderState(i, { status: 'ready', result });
 		} catch (e) {
-			setState(side, { status: 'error', error: e instanceof Error ? e.message : String(e) });
+			setOrderState(i, {
+				status: 'error',
+				error: e instanceof Error ? e.message : String(e)
+			});
 		}
 	}
 
@@ -100,23 +127,20 @@
 	// Deploy order
 	// ---------------------------------------------------------------------------
 
-	async function deployOrder(side: OrderSide) {
-		const s = getState(side);
+	async function deployOrder(i: number) {
+		const s = orderStates[i];
 		if (!s.result) return;
 
-		setState(side, { status: 'deploying' });
+		setOrderState(i, { status: 'deploying' });
 
 		try {
 			if (deploymentMode === 'eoa') {
 				const txHash = await sendOrderTransaction(s.result.args);
-				setState(side, { status: 'success', txHash });
+				setOrderState(i, { status: 'success', txHash });
 			} else {
 				if (!safeAddress.trim()) throw new Error('SAFE address required');
-
 				const addr = get(signerAddress);
 				if (!addr) throw new Error('Wallet not connected');
-
-				// Use window.ethereum as the provider for Safe SDK
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const provider = (window as any).ethereum;
 				if (!provider) throw new Error('No injected wallet found');
@@ -128,11 +152,13 @@
 					provider,
 					s.result.args
 				);
-
-				setState(side, { status: 'success', safeTxHash, safeAppUrl });
+				setOrderState(i, { status: 'success', safeTxHash, safeAppUrl });
 			}
 		} catch (e) {
-			setState(side, { status: 'error', error: e instanceof Error ? e.message : String(e) });
+			setOrderState(i, {
+				status: 'error',
+				error: e instanceof Error ? e.message : String(e)
+			});
 		}
 	}
 </script>
@@ -186,30 +212,6 @@
 			</div>
 		</section>
 
-		<!-- Strategy details -->
-		<section class="mb-6 text-xs text-gray-400 grid grid-cols-2 md:grid-cols-4 gap-3">
-			<div class="bg-gray-900 rounded p-3">
-				<div class="text-gray-500 mb-1">network</div>
-				<div class="text-gray-200">{selectedStrategy.network} ({selectedStrategy.chainId})</div>
-			</div>
-			<div class="bg-gray-900 rounded p-3">
-				<div class="text-gray-500 mb-1">input token</div>
-				<div class="text-gray-200">{selectedStrategy.inputToken.symbol}</div>
-				<div class="text-gray-600 truncate">{selectedStrategy.inputToken.address}</div>
-			</div>
-			<div class="bg-gray-900 rounded p-3">
-				<div class="text-gray-500 mb-1">output token</div>
-				<div class="text-gray-200">{selectedStrategy.outputToken.symbol}</div>
-				<div class="text-gray-600 truncate">{selectedStrategy.outputToken.address}</div>
-			</div>
-			<div class="bg-gray-900 rounded p-3">
-				<div class="text-gray-500 mb-1">spread / timeout</div>
-				<div class="text-gray-200">
-					{selectedStrategy.baselineMultiplier}x / {selectedStrategy.oraclePriceTimeout}s
-				</div>
-			</div>
-		</section>
-
 		<!-- Deployment mode -->
 		<section class="mb-6">
 			<label class="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Send via</label>
@@ -228,7 +230,6 @@
 						: 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
 					>SAFE multisig</button
 				>
-
 				{#if deploymentMode === 'safe'}
 					<input
 						bind:value={safeAddress}
@@ -247,165 +248,154 @@
 
 		<!-- Order cards -->
 		<div class="grid md:grid-cols-2 gap-6">
-			<!-- BUY card -->
-			<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col gap-4">
-				<div>
-					<h2 class="text-base font-semibold">
-						BUY {selectedStrategy.outputToken.symbol}
-					</h2>
-					<p class="text-xs text-gray-500 mt-1">
-						spend {selectedStrategy.depositInputAmount}
-						{selectedStrategy.inputToken.symbol} → receive {selectedStrategy.outputToken.symbol}
-					</p>
-				</div>
-
-				{#if buyState.result?.composedRainlang}
-					<details class="text-xs">
-						<summary class="cursor-pointer text-gray-400 hover:text-gray-200"
-							>view composed rainlang</summary
-						>
-						<pre
-							class="mt-2 bg-gray-950 rounded p-3 overflow-auto text-gray-400 max-h-48 text-xs leading-relaxed">{buyState.result.composedRainlang}</pre>
-					</details>
-				{/if}
-
-				{#if buyState.error}
-					<div class="text-xs text-red-400 bg-red-900/20 rounded p-3 break-words">
-						{buyState.error}
-					</div>
-				{/if}
-
-				{#if buyState.status === 'success'}
-					<div class="text-xs text-green-400 bg-green-900/20 rounded p-3">
-						{#if buyState.txHash}
-							<div>tx confirmed</div>
-							<div class="mt-1 text-gray-500 break-all">{buyState.txHash}</div>
-						{:else if buyState.safeTxHash}
-							<div>proposed to SAFE queue</div>
-							<div class="mt-1 text-gray-500 break-all">{buyState.safeTxHash}</div>
-							{#if buyState.safeAppUrl}
-								<a
-									href={buyState.safeAppUrl}
-									target="_blank"
-									rel="noreferrer"
-									class="mt-2 inline-block text-blue-400 underline">view in safe app →</a
-								>
+			{#each selectedStrategy.orders as order, i (order.label)}
+				{@const state = orderStates[i]}
+				<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col gap-4">
+					<!-- Card header -->
+					<div class="flex items-start justify-between gap-2">
+						<div>
+							<h2 class="text-base font-semibold">{order.label}</h2>
+							{#if order.description}
+								<p class="text-xs text-gray-500 mt-1">{order.description}</p>
 							{/if}
+							<p class="text-xs text-gray-600 mt-1">
+								{order.strategyType} · {order.deploymentKey}
+							</p>
+						</div>
+						<button
+							on:click={() => toggleCustomize(i)}
+							class="shrink-0 text-xs px-2 py-1 rounded border transition-colors {showCustomize[i]
+								? 'bg-yellow-900/40 border-yellow-700 text-yellow-400'
+								: 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
+							>customize</button
+						>
+					</div>
+
+					<!-- Customization panel -->
+					{#if showCustomize[i]}
+						<div class="rounded-lg border border-gray-700 bg-gray-950 p-4 flex flex-col gap-4">
+							<!-- Field values -->
+							{#if Object.keys(state.customFieldValues).length > 0}
+								<div>
+									<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Parameters</div>
+									<div class="flex flex-col gap-2">
+										{#each Object.keys(state.customFieldValues) as key}
+											<label class="flex flex-col gap-1">
+												<span class="text-xs text-gray-400">{fmtKey(key)}</span>
+												<input
+													type="text"
+													value={state.customFieldValues[key]}
+													on:input={(e) => setOrderState(i, { customFieldValues: { ...state.customFieldValues, [key]: e.currentTarget.value } })}
+													class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
+												/>
+											</label>
+										{/each}
+									</div>
+								</div>
+							{/if}
+
+							<!-- Deposits -->
+							{#if Object.keys(state.customDeposits).length > 0}
+								<div>
+									<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Deposits</div>
+									<div class="flex flex-col gap-2">
+										{#each Object.keys(state.customDeposits) as key}
+											<label class="flex flex-col gap-1">
+												<span class="text-xs text-gray-400"
+													>token slot <span class="text-gray-300">{key}</span></span
+												>
+												<input
+													type="text"
+													value={state.customDeposits[key]}
+													on:input={(e) => setOrderState(i, { customDeposits: { ...state.customDeposits, [key]: e.currentTarget.value } })}
+													class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
+												/>
+											</label>
+										{/each}
+									</div>
+								</div>
+							{/if}
+
+							<button
+								on:click={() => resetCustomize(i)}
+								class="self-start text-xs text-gray-500 hover:text-gray-300 underline underline-offset-2"
+								>reset to defaults</button
+							>
+						</div>
+					{/if}
+
+					<!-- Composed rainlang -->
+					{#if state.result?.composedRainlang}
+						<details class="text-xs">
+							<summary class="cursor-pointer text-gray-400 hover:text-gray-200"
+								>view composed rainlang</summary
+							>
+							<pre
+								class="mt-2 bg-gray-950 rounded p-3 overflow-auto text-gray-400 max-h-48 text-xs leading-relaxed">{state.result.composedRainlang}</pre>
+						</details>
+					{/if}
+
+					<!-- Error -->
+					{#if state.error}
+						<div class="text-xs text-red-400 bg-red-900/20 rounded p-3 break-words">
+							{state.error}
+						</div>
+					{/if}
+
+					<!-- Success -->
+					{#if state.status === 'success'}
+						<div class="text-xs text-green-400 bg-green-900/20 rounded p-3">
+							{#if state.txHash}
+								<div>tx confirmed</div>
+								<div class="mt-1 text-gray-500 break-all">{state.txHash}</div>
+							{:else if state.safeTxHash}
+								<div>proposed to SAFE queue</div>
+								<div class="mt-1 text-gray-500 break-all">{state.safeTxHash}</div>
+								{#if state.safeAppUrl}
+									<a
+										href={state.safeAppUrl}
+										target="_blank"
+										rel="noreferrer"
+										class="mt-2 inline-block text-blue-400 underline">view in safe app →</a
+									>
+								{/if}
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Actions -->
+					<div class="flex gap-3 mt-auto">
+						{#if state.status === 'idle' || state.status === 'error'}
+							<button
+								on:click={() => buildOrder(i)}
+								class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
+								>preview</button
+							>
+						{:else if state.status === 'loading'}
+							<div class="flex-1 text-sm py-2 text-center text-gray-500">building…</div>
+						{:else if state.status === 'ready'}
+							<button
+								on:click={() => buildOrder(i)}
+								class="text-sm py-2 px-3 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
+								>rebuild</button
+							>
+							<button
+								on:click={() => deployOrder(i)}
+								class="flex-1 text-sm py-2 rounded bg-blue-700 hover:bg-blue-600 font-semibold"
+								>deploy</button
+							>
+						{:else if state.status === 'deploying'}
+							<div class="flex-1 text-sm py-2 text-center text-gray-500">deploying…</div>
+						{:else if state.status === 'success'}
+							<button
+								on:click={() => buildOrder(i)}
+								class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
+								>deploy another</button
+							>
 						{/if}
 					</div>
-				{/if}
-
-				<div class="flex gap-3 mt-auto">
-					{#if buyState.status === 'idle' || buyState.status === 'error'}
-						<button
-							on:click={() => buildOrder('buy')}
-							class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
-							>preview</button
-						>
-					{:else if buyState.status === 'loading'}
-						<div class="flex-1 text-sm py-2 text-center text-gray-500">building…</div>
-					{:else if buyState.status === 'ready'}
-						<button
-							on:click={() => buildOrder('buy')}
-							class="text-sm py-2 px-3 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
-							>rebuild</button
-						>
-						<button
-							on:click={() => deployOrder('buy')}
-							class="flex-1 text-sm py-2 rounded bg-blue-700 hover:bg-blue-600 font-semibold"
-							>deploy</button
-						>
-					{:else if buyState.status === 'deploying'}
-						<div class="flex-1 text-sm py-2 text-center text-gray-500">deploying…</div>
-					{:else if buyState.status === 'success'}
-						<button
-							on:click={() => buildOrder('buy')}
-							class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
-							>deploy another</button
-						>
-					{/if}
 				</div>
-			</div>
-
-			<!-- SELL card -->
-			<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col gap-4">
-				<div>
-					<h2 class="text-base font-semibold">
-						SELL {selectedStrategy.outputToken.symbol}
-					</h2>
-					<p class="text-xs text-gray-500 mt-1">
-						sell {selectedStrategy.depositOutputAmount}
-						{selectedStrategy.outputToken.symbol} → receive {selectedStrategy.inputToken.symbol}
-					</p>
-				</div>
-
-				{#if sellState.result?.composedRainlang}
-					<details class="text-xs">
-						<summary class="cursor-pointer text-gray-400 hover:text-gray-200"
-							>view composed rainlang</summary
-						>
-						<pre
-							class="mt-2 bg-gray-950 rounded p-3 overflow-auto text-gray-400 max-h-48 text-xs leading-relaxed">{sellState.result.composedRainlang}</pre>
-					</details>
-				{/if}
-
-				{#if sellState.error}
-					<div class="text-xs text-red-400 bg-red-900/20 rounded p-3 break-words">
-						{sellState.error}
-					</div>
-				{/if}
-
-				{#if sellState.status === 'success'}
-					<div class="text-xs text-green-400 bg-green-900/20 rounded p-3">
-						{#if sellState.txHash}
-							<div>tx confirmed</div>
-							<div class="mt-1 text-gray-500 break-all">{sellState.txHash}</div>
-						{:else if sellState.safeTxHash}
-							<div>proposed to SAFE queue</div>
-							<div class="mt-1 text-gray-500 break-all">{sellState.safeTxHash}</div>
-							{#if sellState.safeAppUrl}
-								<a
-									href={sellState.safeAppUrl}
-									target="_blank"
-									rel="noreferrer"
-									class="mt-2 inline-block text-blue-400 underline">view in safe app →</a
-								>
-							{/if}
-						{/if}
-					</div>
-				{/if}
-
-				<div class="flex gap-3 mt-auto">
-					{#if sellState.status === 'idle' || sellState.status === 'error'}
-						<button
-							on:click={() => buildOrder('sell')}
-							class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
-							>preview</button
-						>
-					{:else if sellState.status === 'loading'}
-						<div class="flex-1 text-sm py-2 text-center text-gray-500">building…</div>
-					{:else if sellState.status === 'ready'}
-						<button
-							on:click={() => buildOrder('sell')}
-							class="text-sm py-2 px-3 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
-							>rebuild</button
-						>
-						<button
-							on:click={() => deployOrder('sell')}
-							class="flex-1 text-sm py-2 rounded bg-blue-700 hover:bg-blue-600 font-semibold"
-							>deploy</button
-						>
-					{:else if sellState.status === 'deploying'}
-						<div class="flex-1 text-sm py-2 text-center text-gray-500">deploying…</div>
-					{:else if sellState.status === 'success'}
-						<button
-							on:click={() => buildOrder('sell')}
-							class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700"
-							>deploy another</button
-						>
-					{/if}
-				</div>
-			</div>
+			{/each}
 		</div>
 	{/if}
 </div>
