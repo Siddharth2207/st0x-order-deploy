@@ -170,7 +170,14 @@
 <div class="min-h-screen bg-gray-950 text-gray-100 p-6 font-mono">
 	<!-- Header -->
 	<header class="flex items-center justify-between mb-8">
-		<h1 class="text-xl font-bold tracking-tight">st0x · order deploy</h1>
+		<div class="flex items-center gap-4">
+			<h1 class="text-xl font-bold tracking-tight">st0x · order deploy</h1>
+			<a
+				href="/dashboard"
+				class="text-sm px-3 py-1 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
+				>dashboard →</a
+			>
+		</div>
 		<div>
 			{#if $connected && $signerAddress}
 				<div class="flex items-center gap-3">

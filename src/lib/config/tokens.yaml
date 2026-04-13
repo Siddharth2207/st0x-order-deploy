@@ -2,7 +2,7 @@
 #
 # registryCommit: the rain.strategies git commit to resolve strategy files from.
 # Bump this to pick up new strategy versions.
-registryCommit: "3379ca3f0e677731859fcbb56ad89b543a748c68"
+registryCommit: "9dd64902161158395d588335f0a02e3a6d52f772"
 # ---------------------------------------------------------------------------
 # YAML anchors (reused below — the _anchors key is ignored by the app)
 # ---------------------------------------------------------------------------
