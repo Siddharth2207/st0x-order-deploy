@@ -23,6 +23,24 @@ _anchors:
   # Placeholders — fill in once deployed
   wt_goog: &wt_goog "0x0000000000000000000000000000000000000000"
   wt_aapl: &wt_aapl "0x0000000000000000000000000000000000000000"
+  # ── Vault IDs (Rain "word IDs") ───────────────────────────────────────────
+  # One vault ID per token — shared across buy/sell pairs so deposited tokens
+  # flow directly between orders without manual transfers.
+  # Values are arbitrary bytes32; sequential integers are easy to manage.
+  vault_usdc: &vault_usdc "0x0000000000000000000000000000000000000000000000000000000000000001"
+  vault_mstr: &vault_mstr "0x0000000000000000000000000000000000000000000000000000000000000002"
+  vault_tsla: &vault_tsla "0x0000000000000000000000000000000000000000000000000000000000000003"
+  vault_nvda: &vault_nvda "0x0000000000000000000000000000000000000000000000000000000000000004"
+  vault_amzn: &vault_amzn "0x0000000000000000000000000000000000000000000000000000000000000005"
+  vault_spym: &vault_spym "0x0000000000000000000000000000000000000000000000000000000000000006"
+  vault_iau: &vault_iau "0x0000000000000000000000000000000000000000000000000000000000000007"
+  vault_sivr: &vault_sivr "0x0000000000000000000000000000000000000000000000000000000000000008"
+  vault_coin: &vault_coin "0x0000000000000000000000000000000000000000000000000000000000000009"
+  vault_crcl: &vault_crcl "0x000000000000000000000000000000000000000000000000000000000000000a"
+  vault_bmnr: &vault_bmnr "0x000000000000000000000000000000000000000000000000000000000000000b"
+  vault_pplt: &vault_pplt "0x000000000000000000000000000000000000000000000000000000000000000c"
+  vault_goog: &vault_goog "0x000000000000000000000000000000000000000000000000000000000000000d"
+  vault_aapl: &vault_aapl "0x000000000000000000000000000000000000000000000000000000000000000e"
   # ── Pyth price feed IDs (Equity.US.X/USD) ────────────────────────────────
   feed_mstr: &feed_mstr "0x924571756974792e55532e4d5354522f55534400000000000000000000000000"
   feed_tsla: &feed_tsla "0x924571756974792e55532e54534c412f55534400000000000000000000000000"
@@ -64,6 +82,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_mstr
       - label: "Sell wtMSTR"
         description: "sell wtMSTR → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -77,6 +100,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_mstr
+          input:
+            input: *vault_usdc
   # ── wtTSLA / USDC ─────────────────────────────────────────────────────────
   - name: "wtTSLA/USDC"
     orders:
@@ -93,6 +121,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_tsla
       - label: "Sell wtTSLA"
         description: "sell wtTSLA → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -106,6 +139,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_tsla
+          input:
+            input: *vault_usdc
   # ── wtNVDA / USDC ─────────────────────────────────────────────────────────
   - name: "wtNVDA/USDC"
     orders:
@@ -122,6 +160,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_nvda
       - label: "Sell wtNVDA"
         description: "sell wtNVDA → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -135,6 +178,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_nvda
+          input:
+            input: *vault_usdc
   # ── wtAMZN / USDC ─────────────────────────────────────────────────────────
   - name: "wtAMZN/USDC"
     orders:
@@ -151,6 +199,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_amzn
       - label: "Sell wtAMZN"
         description: "sell wtAMZN → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -164,6 +217,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_amzn
+          input:
+            input: *vault_usdc
   # ── wtSPYM / USDC  (uses SPLG/USD Pyth feed — S&P 500) ───────────────────
   - name: "wtSPYM/USDC"
     orders:
@@ -180,6 +238,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_spym
       - label: "Sell wtSPYM"
         description: "sell wtSPYM → receive USDC at Pyth SPLG price"
         strategyType: "fixed-spread"
@@ -193,6 +256,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_spym
+          input:
+            input: *vault_usdc
   # ── wtIAU / USDC ──────────────────────────────────────────────────────────
   - name: "wtIAU/USDC"
     orders:
@@ -209,6 +277,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_iau
       - label: "Sell wtIAU"
         description: "sell wtIAU → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -222,6 +295,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_iau
+          input:
+            input: *vault_usdc
   # ── wtSIVR / USDC ─────────────────────────────────────────────────────────
   - name: "wtSIVR/USDC"
     orders:
@@ -238,6 +316,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_sivr
       - label: "Sell wtSIVR"
         description: "sell wtSIVR → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -251,6 +334,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_sivr
+          input:
+            input: *vault_usdc
   # ── wtCOIN / USDC ─────────────────────────────────────────────────────────
   - name: "wtCOIN/USDC"
     orders:
@@ -267,6 +355,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_coin
       - label: "Sell wtCOIN"
         description: "sell wtCOIN → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -280,6 +373,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_coin
+          input:
+            input: *vault_usdc
   # ── wtCRCL / USDC ─────────────────────────────────────────────────────────
   - name: "wtCRCL/USDC"
     orders:
@@ -296,6 +394,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_crcl
       - label: "Sell wtCRCL"
         description: "sell wtCRCL → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -309,6 +412,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_crcl
+          input:
+            input: *vault_usdc
   # ── wtBMNR / USDC ─────────────────────────────────────────────────────────
   - name: "wtBMNR/USDC"
     orders:
@@ -325,6 +433,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_bmnr
       - label: "Sell wtBMNR"
         description: "sell wtBMNR → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -338,6 +451,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_bmnr
+          input:
+            input: *vault_usdc
   # ── wtPPLT / USDC ─────────────────────────────────────────────────────────
   - name: "wtPPLT/USDC"
     orders:
@@ -354,6 +472,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_pplt
       - label: "Sell wtPPLT"
         description: "sell wtPPLT → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -367,6 +490,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_pplt
+          input:
+            input: *vault_usdc
   # ── wtGOOG / USDC  (address TBD) ─────────────────────────────────────────
   - name: "wtGOOG/USDC"
     orders:
@@ -383,6 +511,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_goog
       - label: "Sell wtGOOG"
         description: "sell wtGOOG → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -396,6 +529,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_goog
+          input:
+            input: *vault_usdc
   # ── wtAAPL / USDC  (address TBD) ─────────────────────────────────────────
   - name: "wtAAPL/USDC"
     orders:
@@ -412,6 +550,11 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_aapl
       - label: "Sell wtAAPL"
         description: "sell wtAAPL → receive USDC at Pyth price"
         strategyType: "fixed-spread"
@@ -425,3 +568,8 @@ strategies:
           oracle-price-timeout: "300"
         deposits:
           output: "0"
+        vaultIds:
+          output:
+            output: *vault_aapl
+          input:
+            input: *vault_usdc

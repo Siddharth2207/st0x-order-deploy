@@ -14,7 +14,7 @@ import type { DeploymentTransactionArgs } from "@rainlanguage/orderbook";
 import { hashTypedData } from "viem";
 import type { Hex } from "viem";
 
-const SAFE_TX_SERVICE_URLS: Record<number, string> = {
+export const SAFE_TX_SERVICE_URLS: Record<number, string> = {
   8453: "https://safe-transaction-base.safe.global", // Base
   137: "https://safe-transaction-polygon.safe.global", // Polygon
   42161: "https://safe-transaction-arbitrum.safe.global", // Arbitrum
@@ -49,7 +49,7 @@ const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
  * the highest pending-queue nonce + 1, so new proposals never collide with
  * already-queued transactions.
  */
-async function getNextNonce(
+export async function getNextNonce(
   txServiceUrl: string,
   safeAddress: string,
 ): Promise<number> {
@@ -79,7 +79,7 @@ async function getNextNonce(
  * Compute the Safe EIP-712 hash, sign it, and POST to the Safe Transaction
  * Service. Returns the safe tx hash.
  */
-async function proposeSingleTx(
+export async function proposeSingleTx(
   txServiceUrl: string,
   chainId: number,
   safeAddress: string,
