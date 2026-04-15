@@ -130,28 +130,35 @@
 	}
 
 	/**
-	 * Accumulated map of pairKey → unique token addresses for that pair.
+	 * Accumulated map of pairKey → non-stable token address.
 	 * Persists across page changes so tabs are stable even when a pair filter
 	 * is active and `orders` only contains that pair's results.
+	 *
+	 * We filter by ONLY the non-stable (wt*) token address, not by USDC.
+	 * The SDK ORs within each side of the filter, so passing USDC would match
+	 * every X/USDC pair on the orderbook.
 	 */
-	let pairTokenAddrs = new Map<string, Address[]>();
+	let pairNonStableAddr = new Map<string, Address>();
 
 	function updatePairTokenMap(newOrders: RaindexOrder[]) {
 		let changed = false;
 		for (const order of newOrders) {
 			const key = getPairKey(order);
-			if (!pairTokenAddrs.has(key)) {
-				const addrs = new Set<string>();
-				order.inputsList.items.forEach((v) => addrs.add(v.token.address));
-				order.outputsList.items.forEach((v) => addrs.add(v.token.address));
-				pairTokenAddrs.set(key, [...addrs] as Address[]);
-				changed = true;
+			if (!pairNonStableAddr.has(key)) {
+				const nonStable = [
+					...order.inputsList.items,
+					...order.outputsList.items
+				].find((v) => !STABLES.has(v.token.symbol ?? ''));
+				if (nonStable) {
+					pairNonStableAddr.set(key, nonStable.token.address as Address);
+					changed = true;
+				}
 			}
 		}
-		if (changed) pairTokenAddrs = pairTokenAddrs; // trigger reactivity
+		if (changed) pairNonStableAddr = pairNonStableAddr;
 	}
 
-	$: pairTabs = [...pairTokenAddrs.keys()].sort((a, b) => {
+	$: pairTabs = [...pairNonStableAddr.keys()].sort((a, b) => {
 		const ia = STRATEGY_ORDER.get(a) ?? 999;
 		const ib = STRATEGY_ORDER.get(b) ?? 999;
 		return ia - ib;
@@ -164,13 +171,15 @@
 		fetching = true;
 		fetchError = null;
 		try {
-			// When a specific pair is selected, filter server-side by both token
-			// addresses so ALL pages for that pair are correct (not just client-side
-			// filtering on the current 25 results).
+			// When a specific pair is selected, filter server-side using ONLY the
+			// non-stable token address (e.g. wtNVDA, not USDC). The SDK ORs within
+			// each side of the filter, so including USDC would match every X/USDC
+			// pair on the orderbook. Filtering by just wtNVDA returns orders where
+			// wtNVDA is an input (sell) OR an output (buy) — exactly this pair.
 			let tokenFilter: GetOrdersTokenFilter | undefined;
 			if (selectedPair !== 'All') {
-				const addrs = pairTokenAddrs.get(selectedPair);
-				if (addrs) tokenFilter = { inputs: addrs, outputs: addrs };
+				const addr = pairNonStableAddr.get(selectedPair);
+				if (addr) tokenFilter = { inputs: [addr], outputs: [addr] };
 			}
 
 			const result = await client.getOrders(
