@@ -5,7 +5,8 @@
 	import { injected } from '@wagmi/connectors';
 	import { wagmiConfig, signerAddress, connected } from 'svelte-wagmi';
 	import { sendTransaction, waitForTransactionReceipt } from '@wagmi/core';
-	import type { RaindexClient, RaindexOrder, RaindexVault } from '@rainlanguage/orderbook';
+	import type { RaindexClient, RaindexOrder, RaindexVault, GetOrdersTokenFilter } from '@rainlanguage/orderbook';
+	import type { Address } from 'viem';
 	import { getOrderbookClient } from '$lib/services/raindexClient';
 	import { STRATEGIES } from '$lib/config/strategies';
 	import {
@@ -16,6 +17,7 @@
 	import { connectTurnkeyWallet, sendViaTurnkey, type TurnkeyWallet } from '$lib/services/turnkeyService';
 	import { depositEoa, withdrawEoa, depositSafe, withdrawSafe, depositTurnkey, withdrawTurnkey, type VaultOpInput } from '$lib/services/vaultOperations';
 	import type { Hex } from 'viem';
+
 
 	const PAGE_SIZE = 25;
 
@@ -112,48 +114,9 @@
 		}
 	});
 
-	// ── Fetch ──────────────────────────────────────────────────────────────────
-	async function fetchOrders(resetPage = false) {
-		if (!client) return;
-		if (resetPage) currentPage = 1;
-		fetching = true;
-		fetchError = null;
-		try {
-			const result = await client.getOrders(
-				null,
-				{
-					owners: ownerFilter.trim() ? [ownerFilter.trim() as `0x${string}`] : [],
-					active: showInactive ? undefined : true
-				},
-				currentPage,
-				PAGE_SIZE
-			);
-			if (result.error) { fetchError = result.error.readableMsg; return; }
-			orders = result.value.orders;
-			totalCount = result.value.totalCount;
-			selectedPair = 'All';
-		} catch (e) {
-			fetchError = e instanceof Error ? e.message : String(e);
-		} finally {
-			fetching = false;
-		}
-	}
-
-	function applyOwnerFilter() { ownerFilter = ownerFilterInput; fetchOrders(true); }
-	function clearOwnerFilter() { ownerFilterInput = ''; ownerFilter = ''; fetchOrders(true); }
-	function handleOwnerKeydown(e: KeyboardEvent) { if (e.key === 'Enter') applyOwnerFilter(); }
-	function toggleInactive() { showInactive = !showInactive; fetchOrders(true); }
-	function prevPage() { if (currentPage > 1) { currentPage--; fetchOrders(); } }
-	function nextPage() { if (currentPage * PAGE_SIZE < totalCount) { currentPage++; fetchOrders(); } }
-
-	function toggleOrder(hash: string) {
-		if (expandedOrders.has(hash)) expandedOrders.delete(hash);
-		else expandedOrders.add(hash);
-		expandedOrders = expandedOrders;
-	}
-
 	// ── Token pair grouping ────────────────────────────────────────────────────
 	const STABLES = new Set(['USDC', 'USDT', 'DAI', 'FRAX', 'LUSD']);
+	const STRATEGY_ORDER = new Map(STRATEGIES.map((s, i) => [s.name, i]));
 
 	function getPairKey(order: RaindexOrder): string {
 		const syms = new Set([
@@ -166,26 +129,84 @@
 		return [...syms].join('/');
 	}
 
-	// Strategy name order for tab sorting
-	const STRATEGY_ORDER = new Map(STRATEGIES.map((s, i) => [s.name, i]));
+	/**
+	 * Accumulated map of pairKey → unique token addresses for that pair.
+	 * Persists across page changes so tabs are stable even when a pair filter
+	 * is active and `orders` only contains that pair's results.
+	 */
+	let pairTokenAddrs = new Map<string, Address[]>();
 
-	$: pairTabs = (() => {
-		const seen = new Set<string>();
-		const pairs: string[] = [];
-		for (const order of orders) {
-			const k = getPairKey(order);
-			if (!seen.has(k)) { seen.add(k); pairs.push(k); }
+	function updatePairTokenMap(newOrders: RaindexOrder[]) {
+		let changed = false;
+		for (const order of newOrders) {
+			const key = getPairKey(order);
+			if (!pairTokenAddrs.has(key)) {
+				const addrs = new Set<string>();
+				order.inputsList.items.forEach((v) => addrs.add(v.token.address));
+				order.outputsList.items.forEach((v) => addrs.add(v.token.address));
+				pairTokenAddrs.set(key, [...addrs] as Address[]);
+				changed = true;
+			}
 		}
-		return pairs.sort((a, b) => {
-			const ia = STRATEGY_ORDER.get(a) ?? 999;
-			const ib = STRATEGY_ORDER.get(b) ?? 999;
-			return ia - ib;
-		});
-	})();
+		if (changed) pairTokenAddrs = pairTokenAddrs; // trigger reactivity
+	}
 
-	$: displayedOrders = selectedPair === 'All'
-		? orders
-		: orders.filter((o) => getPairKey(o) === selectedPair);
+	$: pairTabs = [...pairTokenAddrs.keys()].sort((a, b) => {
+		const ia = STRATEGY_ORDER.get(a) ?? 999;
+		const ib = STRATEGY_ORDER.get(b) ?? 999;
+		return ia - ib;
+	});
+
+	// ── Fetch ──────────────────────────────────────────────────────────────────
+	async function fetchOrders(resetPage = false) {
+		if (!client) return;
+		if (resetPage) currentPage = 1;
+		fetching = true;
+		fetchError = null;
+		try {
+			// When a specific pair is selected, filter server-side by both token
+			// addresses so ALL pages for that pair are correct (not just client-side
+			// filtering on the current 25 results).
+			let tokenFilter: GetOrdersTokenFilter | undefined;
+			if (selectedPair !== 'All') {
+				const addrs = pairTokenAddrs.get(selectedPair);
+				if (addrs) tokenFilter = { inputs: addrs, outputs: addrs };
+			}
+
+			const result = await client.getOrders(
+				null,
+				{
+					owners: ownerFilter.trim() ? [ownerFilter.trim() as `0x${string}`] : [],
+					active: showInactive ? undefined : true,
+					tokens: tokenFilter,
+				},
+				currentPage,
+				PAGE_SIZE
+			);
+			if (result.error) { fetchError = result.error.readableMsg; return; }
+			orders = result.value.orders;
+			totalCount = result.value.totalCount;
+			updatePairTokenMap(orders);
+		} catch (e) {
+			fetchError = e instanceof Error ? e.message : String(e);
+		} finally {
+			fetching = false;
+		}
+	}
+
+	function applyOwnerFilter() { ownerFilter = ownerFilterInput; selectedPair = 'All'; fetchOrders(true); }
+	function clearOwnerFilter() { ownerFilterInput = ''; ownerFilter = ''; selectedPair = 'All'; fetchOrders(true); }
+	function handleOwnerKeydown(e: KeyboardEvent) { if (e.key === 'Enter') applyOwnerFilter(); }
+	function toggleInactive() { showInactive = !showInactive; selectedPair = 'All'; fetchOrders(true); }
+	function selectPair(pair: string) { selectedPair = pair; fetchOrders(true); }
+	function prevPage() { if (currentPage > 1) { currentPage--; fetchOrders(); } }
+	function nextPage() { if (currentPage * PAGE_SIZE < totalCount) { currentPage++; fetchOrders(); } }
+
+	function toggleOrder(hash: string) {
+		if (expandedOrders.has(hash)) expandedOrders.delete(hash);
+		else expandedOrders.add(hash);
+		expandedOrders = expandedOrders;
+	}
 
 	$: totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -418,13 +439,13 @@
 			{/if}
 
 			<!-- ── Token pair tabs ─────────────────────────────────────────────────── -->
-			{#if pairTabs.length > 1}
+			{#if pairTabs.length > 0}
 				<div class="mb-5 flex flex-wrap gap-2">
-					<button on:click={() => (selectedPair = 'All')}
+					<button on:click={() => selectPair('All')}
 						class="text-sm px-4 py-1.5 rounded border transition-colors {selectedPair === 'All' ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
 					>All</button>
 					{#each pairTabs as pair}
-						<button on:click={() => (selectedPair = pair)}
+						<button on:click={() => selectPair(pair)}
 							class="text-sm px-4 py-1.5 rounded border transition-colors {selectedPair === pair ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
 						>{pair}</button>
 					{/each}
@@ -435,7 +456,7 @@
 			<div class="flex items-center justify-between mb-4">
 				<div class="text-xs text-gray-500">
 					{#if fetching}loading…
-					{:else}{displayedOrders.length}{selectedPair !== 'All' ? ` ${selectedPair}` : ''} order{displayedOrders.length !== 1 ? 's' : ''} · page {currentPage} of {Math.max(1, totalPages)} ({totalCount} total)
+					{:else}{totalCount}{selectedPair !== 'All' ? ` ${selectedPair}` : ''} order{totalCount !== 1 ? 's' : ''} · page {currentPage} of {Math.max(1, totalPages)}
 					{/if}
 				</div>
 				{#if fetching}
@@ -447,11 +468,11 @@
 			</div>
 
 			<!-- ── Order cards ─────────────────────────────────────────────────────── -->
-			{#if displayedOrders.length === 0 && !fetching}
+			{#if orders.length === 0 && !fetching}
 				<div class="text-center text-gray-600 py-20 text-sm">no orders found</div>
 			{:else}
 				<div class="space-y-3">
-					{#each displayedOrders as order (order.orderHash)}
+					{#each orders as order (order.orderHash)}
 						{@const isExpanded = expandedOrders.has(order.orderHash)}
 						{@const removeState = removeStates.get(order.orderHash) ?? { status: 'idle', error: '' }}
 						<div class="bg-gray-900 rounded-xl border transition-colors {order.active ? 'border-gray-800' : 'border-gray-800/50 opacity-70'}">
