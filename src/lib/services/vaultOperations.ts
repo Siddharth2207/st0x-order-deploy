@@ -376,7 +376,10 @@ export async function withdrawSafe(
 
 // ── Turnkey operations ────────────────────────────────────────────────────────
 
-export async function depositTurnkey(input: VaultOpInput): Promise<Hex> {
+export async function depositTurnkey(
+  input: VaultOpInput,
+  onStep?: (step: "approving" | "approved" | "depositing") => void,
+): Promise<Hex> {
   const { approveData, depositData } = await buildDepositCalldata(
     input.tokenAddress,
     input.vaultId,
@@ -384,11 +387,19 @@ export async function depositTurnkey(input: VaultOpInput): Promise<Hex> {
     input.orderbookAddress,
     input.chainId,
   );
+
+  // Step 1 — ERC-20 approve
+  onStep?.("approving");
+  await sendViaTurnkey(
+    [{ to: input.tokenAddress, data: approveData }],
+    input.chainId,
+  );
+  onStep?.("approved");
+
+  // Step 2 — deposit4
+  onStep?.("depositing");
   return sendViaTurnkey(
-    [
-      { to: input.tokenAddress, data: approveData },
-      { to: input.orderbookAddress, data: depositData },
-    ],
+    [{ to: input.orderbookAddress, data: depositData }],
     input.chainId,
   ) as Promise<Hex>;
 }
