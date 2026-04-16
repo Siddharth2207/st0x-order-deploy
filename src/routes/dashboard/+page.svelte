@@ -61,6 +61,29 @@
 	let showInactive = false;
 	let selectedPair = 'All';
 
+	// Debounced owner filter — fires 400 ms after the user stops typing
+	let _ownerDebounce: ReturnType<typeof setTimeout> | null = null;
+	function onOwnerInput(e: Event) {
+		ownerFilterInput = (e.currentTarget as HTMLInputElement).value;
+		if (_ownerDebounce) clearTimeout(_ownerDebounce);
+		_ownerDebounce = setTimeout(() => {
+			ownerFilter = ownerFilterInput.trim();
+			fetchOrders(true);
+		}, 400);
+	}
+	function onOwnerKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			if (_ownerDebounce) { clearTimeout(_ownerDebounce); _ownerDebounce = null; }
+			ownerFilter = ownerFilterInput.trim();
+			fetchOrders(true);
+		}
+		if (e.key === 'Escape') clearOwnerFilter();
+	}
+	function clearOwnerFilter() {
+		if (_ownerDebounce) { clearTimeout(_ownerDebounce); _ownerDebounce = null; }
+		ownerFilterInput = ''; ownerFilter = ''; selectedPair = 'All'; fetchOrders(true);
+	}
+
 	// ── Results ────────────────────────────────────────────────────────────────
 	let orders: RaindexOrder[] = [];
 	let totalCount = 0;
@@ -203,10 +226,7 @@
 		}
 	}
 
-	function applyOwnerFilter() { ownerFilter = ownerFilterInput; selectedPair = 'All'; fetchOrders(true); }
-	function clearOwnerFilter() { ownerFilterInput = ''; ownerFilter = ''; selectedPair = 'All'; fetchOrders(true); }
-	function handleOwnerKeydown(e: KeyboardEvent) { if (e.key === 'Enter') applyOwnerFilter(); }
-	function toggleInactive() { showInactive = !showInactive; selectedPair = 'All'; fetchOrders(true); }
+	function toggleInactive() { showInactive = !showInactive; fetchOrders(true); }
 	function selectPair(pair: string) { selectedPair = pair; fetchOrders(true); }
 	function prevPage() { if (currentPage > 1) { currentPage--; fetchOrders(); } }
 	function nextPage() { if (currentPage * PAGE_SIZE < totalCount) { currentPage++; fetchOrders(); } }
@@ -332,264 +352,304 @@
 </script>
 
 <div class="min-h-screen bg-gray-950 text-gray-100 font-mono">
-	<!-- Header -->
-	<header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-		<div class="flex items-center gap-4">
-			<a href="/" class="text-gray-500 hover:text-gray-300 text-sm">← deploy</a>
-			<h1 class="text-lg font-bold tracking-tight">st0x · orderbook dashboard</h1>
-			<a
-				href="/export"
-				class="text-sm px-3 py-1 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
-				>export →</a
-			>
+
+	<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+	<header class="sticky top-0 z-10 bg-gray-950/95 backdrop-blur border-b border-gray-800 px-6 py-3 flex items-center justify-between gap-4">
+		<div class="flex items-center gap-3 min-w-0">
+			<a href="/" class="text-gray-500 hover:text-gray-200 text-xs transition-colors shrink-0">← deploy</a>
+			<span class="text-gray-700 shrink-0">/</span>
+			<h1 class="text-sm font-semibold tracking-tight text-gray-100 truncate">orderbook dashboard</h1>
+			<a href="/export" class="shrink-0 text-xs px-2.5 py-1 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors">export →</a>
 		</div>
-		<!-- Wallet status -->
-		<div>
+
+		<!-- Wallet strip (right side of header) -->
+		<div class="flex items-center gap-2 shrink-0">
+			<!-- Mode pills -->
+			<div class="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1">
+				<button on:click={() => (deploymentMode = 'eoa')}
+					class="text-xs px-2.5 py-1 rounded transition-colors {deploymentMode === 'eoa' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}"
+				>EOA</button>
+				<button on:click={() => (deploymentMode = 'safe')}
+					class="text-xs px-2.5 py-1 rounded transition-colors {deploymentMode === 'safe' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}"
+				>Safe</button>
+				<button on:click={() => (deploymentMode = 'turnkey')}
+					class="text-xs px-2.5 py-1 rounded transition-colors {deploymentMode === 'turnkey' ? 'bg-yellow-700 text-white' : 'text-gray-500 hover:text-gray-300'}"
+				>Turnkey</button>
+			</div>
+
+			<!-- Context: SAFE address input -->
+			{#if deploymentMode === 'safe'}
+				<input bind:value={safeAddress} placeholder="Safe 0x…"
+					class="text-xs px-2 py-1.5 rounded bg-gray-900 border border-gray-700 text-gray-100 w-44 focus:outline-none focus:border-blue-500" />
+			{/if}
+
+			<!-- Context: connected wallet address -->
 			{#if deploymentMode === 'turnkey'}
 				{#if turnkeyWallet}
-					<div class="flex items-center gap-3">
-						<span class="text-xs text-yellow-400">turnkey</span>
-						<span class="text-xs text-gray-400">{fmtAddress(turnkeyWallet.address)}</span>
-						<button on:click={() => (turnkeyWallet = null)} class="text-xs px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">disconnect</button>
+					<div class="flex items-center gap-2">
+						<span class="text-xs text-yellow-400/80 font-mono">{fmtAddress(turnkeyWallet.address)}</span>
+						<button on:click={() => (turnkeyWallet = null)} class="text-xs text-gray-600 hover:text-gray-400 transition-colors">✕</button>
 					</div>
 				{:else}
-					<span class="text-xs text-gray-500">turnkey not connected</span>
+					<button on:click={connectTurnkey} disabled={turnkeyConnecting}
+						class="text-xs px-3 py-1.5 rounded bg-yellow-800 hover:bg-yellow-700 disabled:opacity-50 transition-colors"
+					>{turnkeyConnecting ? 'connecting…' : 'connect'}</button>
 				{/if}
 			{:else if $connected && $signerAddress}
-				<div class="flex items-center gap-3">
-					<span class="text-xs text-gray-400">{fmtAddress($signerAddress)}</span>
-					<button on:click={handleDisconnect} class="text-xs px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">disconnect</button>
+				<div class="flex items-center gap-2">
+					<span class="text-xs text-gray-400 font-mono">{fmtAddress($signerAddress)}</span>
+					<button on:click={handleDisconnect} class="text-xs text-gray-600 hover:text-gray-400 transition-colors">✕</button>
 				</div>
 			{:else}
-				<button on:click={handleConnect} class="text-sm px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 font-semibold">connect wallet</button>
+				<button on:click={handleConnect} class="text-xs px-3 py-1.5 rounded bg-blue-700 hover:bg-blue-600 font-semibold transition-colors">connect</button>
 			{/if}
 		</div>
 	</header>
 
-	<main class="px-6 py-6 max-w-7xl mx-auto">
+	<!-- Turnkey error banner -->
+	{#if turnkeyConnectError}
+		<div class="px-6 py-2 text-xs text-red-400 bg-red-900/20 border-b border-red-900/40 break-words">{turnkeyConnectError}</div>
+	{/if}
+
+	<main class="px-6 py-5 max-w-7xl mx-auto">
+
 		{#if initError}
-			<div class="bg-red-900/30 border border-red-700 rounded-lg p-4 text-sm text-red-300 mb-6">{initError}</div>
+			<div class="bg-red-900/20 border border-red-800 rounded-lg p-4 text-sm text-red-300 mb-5">{initError}</div>
 		{/if}
 
 		{#if initializing}
-			<div class="flex items-center gap-3 text-gray-400 mt-20 justify-center">
-				<svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-				</svg>
-				<span class="text-sm">initializing subgraph client…</span>
+			<!-- Skeleton loader -->
+			<div class="space-y-2 mt-6">
+				{#each [0,1,2,3,4] as _}
+					<div class="h-12 bg-gray-900 rounded-lg border border-gray-800 animate-pulse"></div>
+				{/each}
 			</div>
 		{:else if !initError}
 
-			<!-- ── Wallet mode ────────────────────────────────────────────────────── -->
-			<section class="mb-6">
-				<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Wallet mode (for remove / vault ops)</div>
-				<div class="flex gap-3 items-start flex-wrap">
-					<button on:click={() => (deploymentMode = 'eoa')}
-						class="text-sm px-4 py-2 rounded border transition-colors {deploymentMode === 'eoa' ? 'bg-green-800 border-green-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
-					>EOA wallet</button>
-					<button on:click={() => (deploymentMode = 'safe')}
-						class="text-sm px-4 py-2 rounded border transition-colors {deploymentMode === 'safe' ? 'bg-green-800 border-green-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
-					>SAFE multisig</button>
-					<button on:click={() => (deploymentMode = 'turnkey')}
-						class="text-sm px-4 py-2 rounded border transition-colors {deploymentMode === 'turnkey' ? 'bg-yellow-800 border-yellow-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
-					>Turnkey</button>
-					{#if deploymentMode === 'safe'}
-						<input bind:value={safeAddress} placeholder="0x… SAFE address"
-							class="text-sm px-3 py-2 rounded bg-gray-800 border border-gray-600 text-gray-100 w-80 focus:outline-none focus:border-blue-500" />
-					{/if}
-					{#if deploymentMode === 'turnkey' && !turnkeyWallet}
-						<button on:click={connectTurnkey} disabled={turnkeyConnecting}
-							class="text-sm px-4 py-2 rounded bg-yellow-700 hover:bg-yellow-600 disabled:opacity-50 font-semibold"
-						>{turnkeyConnecting ? 'connecting…' : 'connect turnkey'}</button>
+			<!-- ── Filter bar ──────────────────────────────────────────────────────── -->
+			<div class="mb-4 flex flex-wrap items-center gap-3">
+
+				<!-- Owner search (instant / debounced) -->
+				<div class="relative flex-1 min-w-52 max-w-xs">
+					<svg class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+					</svg>
+					<input
+						type="text"
+						value={ownerFilterInput}
+						on:input={onOwnerInput}
+						on:keydown={onOwnerKeydown}
+						placeholder="filter by owner address…"
+						class="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg bg-gray-900 border border-gray-800 text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-600 transition-colors"
+					/>
+					{#if ownerFilterInput}
+						<button on:click={clearOwnerFilter} class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-300 transition-colors text-xs">✕</button>
 					{/if}
 				</div>
-				{#if turnkeyConnectError}
-					<div class="mt-2 text-xs text-red-400 bg-red-900/20 rounded p-2 max-w-xl break-words">{turnkeyConnectError}</div>
-				{/if}
-			</section>
 
-			<!-- ── Filters ────────────────────────────────────────────────────────── -->
-			<section class="mb-6 flex flex-wrap gap-4 items-end">
-				<div class="flex flex-col gap-1">
-					<div class="text-xs text-gray-400 uppercase tracking-wider">Order Owner</div>
-					<div class="flex gap-2">
-						<input type="text" bind:value={ownerFilterInput} on:keydown={handleOwnerKeydown}
-							placeholder="0x… address"
-							class="text-sm px-3 py-2 rounded bg-gray-900 border border-gray-700 text-gray-100 w-80 focus:outline-none focus:border-blue-500 placeholder-gray-600" />
-						<button on:click={applyOwnerFilter} class="text-sm px-4 py-2 rounded bg-blue-700 hover:bg-blue-600 font-semibold">filter</button>
-						{#if ownerFilter}
-							<button on:click={clearOwnerFilter} class="text-sm px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400">clear</button>
-						{/if}
-					</div>
+				<!-- Status toggle pills -->
+				<div class="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1">
+					<button on:click={() => { if (showInactive) toggleInactive(); }}
+						class="text-xs px-3 py-1 rounded transition-colors {!showInactive ? 'bg-green-800 text-green-200' : 'text-gray-500 hover:text-gray-300'}"
+					>active</button>
+					<button on:click={() => { if (!showInactive) toggleInactive(); }}
+						class="text-xs px-3 py-1 rounded transition-colors {showInactive ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}"
+					>all</button>
 				</div>
-				<div class="flex flex-col gap-1">
-					<div class="text-xs text-gray-400 uppercase tracking-wider">Status</div>
-					<div class="flex gap-2">
-						<button on:click={() => { if (showInactive) toggleInactive(); }}
-							class="text-sm px-4 py-2 rounded border transition-colors {!showInactive ? 'bg-green-800 border-green-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
-						>active only</button>
-						<button on:click={() => { if (!showInactive) toggleInactive(); }}
-							class="text-sm px-4 py-2 rounded border transition-colors {showInactive ? 'bg-gray-700 border-gray-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
-						>all orders</button>
-					</div>
-				</div>
-			</section>
 
-			{#if ownerFilter}
-				<div class="mb-4 flex items-center gap-2">
-					<span class="text-xs text-gray-500">filtering by owner:</span>
-					<span class="text-xs bg-blue-900/40 border border-blue-700 text-blue-300 px-2 py-0.5 rounded font-mono">{ownerFilter}</span>
+				<!-- Spacer + count + spinner -->
+				<div class="ml-auto flex items-center gap-2">
+					{#if fetching}
+						<svg class="animate-spin h-3.5 w-3.5 text-gray-500" viewBox="0 0 24 24" fill="none">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+						</svg>
+					{/if}
+					<span class="text-xs text-gray-600">
+						{#if !fetching}{totalCount} order{totalCount !== 1 ? 's' : ''}{/if}
+					</span>
+				</div>
+			</div>
+
+			<!-- Active filter chips -->
+			{#if ownerFilter || selectedPair !== 'All' || showInactive}
+				<div class="mb-3 flex flex-wrap gap-2">
+					{#if ownerFilter}
+						<span class="inline-flex items-center gap-1.5 text-xs bg-blue-900/30 border border-blue-800/50 text-blue-300 px-2.5 py-1 rounded-full font-mono">
+							owner: {fmtAddress(ownerFilter)}
+							<button on:click={clearOwnerFilter} class="text-blue-500 hover:text-blue-300 transition-colors">✕</button>
+						</span>
+					{/if}
+					{#if selectedPair !== 'All'}
+						<span class="inline-flex items-center gap-1.5 text-xs bg-purple-900/30 border border-purple-800/50 text-purple-300 px-2.5 py-1 rounded-full">
+							pair: {selectedPair}
+							<button on:click={() => selectPair('All')} class="text-purple-500 hover:text-purple-300 transition-colors">✕</button>
+						</span>
+					{/if}
+					{#if showInactive}
+						<span class="inline-flex items-center gap-1.5 text-xs bg-gray-800 border border-gray-700 text-gray-400 px-2.5 py-1 rounded-full">
+							showing inactive
+							<button on:click={toggleInactive} class="text-gray-500 hover:text-gray-300 transition-colors">✕</button>
+						</span>
+					{/if}
 				</div>
 			{/if}
 
 			{#if fetchError}
-				<div class="bg-red-900/30 border border-red-700 rounded-lg p-4 text-sm text-red-300 mb-4">{fetchError}</div>
+				<div class="bg-red-900/20 border border-red-800 rounded-lg p-3 text-xs text-red-300 mb-4">{fetchError}</div>
 			{/if}
 
-			<!-- ── Token pair tabs ─────────────────────────────────────────────────── -->
+			<!-- ── Token pair tabs (horizontal scroll) ─────────────────────────────── -->
 			{#if pairTabs.length > 0}
-				<div class="mb-5 flex flex-wrap gap-2">
+				<div class="mb-4 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none" style="scrollbar-width:none">
 					<button on:click={() => selectPair('All')}
-						class="text-sm px-4 py-1.5 rounded border transition-colors {selectedPair === 'All' ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
+						class="shrink-0 text-xs px-3 py-1 rounded-full border transition-colors {selectedPair === 'All' ? 'bg-blue-700 border-blue-600 text-white' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
 					>All</button>
 					{#each pairTabs as pair}
 						<button on:click={() => selectPair(pair)}
-							class="text-sm px-4 py-1.5 rounded border transition-colors {selectedPair === pair ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'}"
+							class="shrink-0 text-xs px-3 py-1 rounded-full border transition-colors {selectedPair === pair ? 'bg-blue-700 border-blue-600 text-white' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
 						>{pair}</button>
 					{/each}
 				</div>
 			{/if}
 
-			<!-- Summary -->
-			<div class="flex items-center justify-between mb-4">
-				<div class="text-xs text-gray-500">
-					{#if fetching}loading…
-					{:else}{totalCount}{selectedPair !== 'All' ? ` ${selectedPair}` : ''} order{totalCount !== 1 ? 's' : ''} · page {currentPage} of {Math.max(1, totalPages)}
-					{/if}
-				</div>
-				{#if fetching}
-					<svg class="animate-spin h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-					</svg>
-				{/if}
-			</div>
-
-			<!-- ── Order cards ─────────────────────────────────────────────────────── -->
+			<!-- ── Orders list ──────────────────────────────────────────────────────── -->
 			{#if orders.length === 0 && !fetching}
-				<div class="text-center text-gray-600 py-20 text-sm">no orders found</div>
+				<div class="text-center text-gray-700 py-20 text-sm">no orders found</div>
 			{:else}
-				<div class="space-y-3">
+				<div class="rounded-xl border border-gray-800 overflow-hidden">
 					{#each orders as order (order.orderHash)}
 						{@const isExpanded = expandedOrders.has(order.orderHash)}
 						{@const removeState = removeStates.get(order.orderHash) ?? { status: 'idle', error: '' }}
-						<div class="bg-gray-900 rounded-xl border transition-colors {order.active ? 'border-gray-800' : 'border-gray-800/50 opacity-70'}">
+						<div class="border-b border-gray-800 last:border-0 {!order.active ? 'opacity-50' : ''}">
 
-							<!-- Order row -->
-							<div class="px-5 py-4 flex flex-wrap items-center gap-x-5 gap-y-2">
-								<!-- Status badge -->
-								<span class="shrink-0 text-xs px-2 py-0.5 rounded-full font-semibold {order.active ? 'bg-green-900/50 text-green-400 border border-green-800' : 'bg-gray-800 text-gray-500 border border-gray-700'}">
-									{order.active ? 'active' : 'inactive'}
-								</span>
+							<!-- ── Dense order row ──────────────────────────────────────── -->
+							<div
+								class="px-4 py-3 flex items-center gap-3 hover:bg-gray-900/60 transition-colors cursor-pointer select-none"
+								on:click={() => toggleOrder(order.orderHash)}
+								on:keydown={(e) => e.key === 'Enter' && toggleOrder(order.orderHash)}
+								role="button"
+								tabindex="0"
+							>
+								<!-- Expand chevron -->
+								<svg class="h-3.5 w-3.5 text-gray-600 shrink-0 transition-transform {isExpanded ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+								</svg>
 
-								<!-- Chain -->
-								<span class="shrink-0 text-xs text-gray-500">chain {order.chainId}</span>
+								<!-- Status dot -->
+								<span class="shrink-0 h-2 w-2 rounded-full {order.active ? 'bg-green-500' : 'bg-gray-600'}"></span>
+
+								<!-- Pair -->
+								<span class="text-xs font-semibold text-blue-300 w-28 shrink-0 truncate">{getPairKey(order)}</span>
 
 								<!-- Hash -->
-								<span class="font-mono text-xs text-gray-300" title={order.orderHash}>{fmtAddress(order.orderHash)}</span>
+								<span class="font-mono text-xs text-gray-400 w-20 shrink-0" title={order.orderHash}>{fmtAddress(order.orderHash)}</span>
 
 								<!-- Owner -->
-								<div class="flex items-center gap-1.5">
-									<span class="text-xs text-gray-600">owner</span>
-									<span class="font-mono text-xs text-gray-400" title={order.owner}>{fmtAddress(order.owner)}</span>
-								</div>
+								<span class="font-mono text-xs text-gray-600 hidden md:block truncate flex-1" title={order.owner}>
+									<span class="text-gray-700">owner </span>{fmtAddress(order.owner)}
+								</span>
 
-								<!-- Pair key -->
-								<span class="text-xs text-blue-400 font-semibold">{getPairKey(order)}</span>
+								<!-- Vault balance summary -->
+								<span class="text-xs text-gray-500 hidden lg:flex items-center gap-2 shrink-0">
+									{#each [...new Set([...order.inputsList.items, ...order.outputsList.items].map(v => v.token.symbol ?? '?'))] as sym}
+										{@const vault = [...order.inputsList.items, ...order.outputsList.items].find(v => (v.token.symbol ?? '?') === sym)}
+										{#if vault}
+											<span class="text-gray-400">{vault.formattedBalance} <span class="text-gray-600">{sym}</span></span>
+										{/if}
+									{/each}
+								</span>
+
+								<!-- Chain badge -->
+								<span class="shrink-0 text-xs text-gray-700 hidden sm:block">#{order.chainId}</span>
 
 								<!-- Timestamp -->
-								<span class="text-xs text-gray-600 ml-auto">{fmtTimestamp(order.timestampAdded)}</span>
+								<span class="shrink-0 text-xs text-gray-700 hidden xl:block">{fmtTimestamp(order.timestampAdded)}</span>
 
-								<!-- Expand toggle -->
-								<button on:click={() => toggleOrder(order.orderHash)}
-									class="shrink-0 text-xs px-3 py-1 rounded border transition-colors {isExpanded ? 'bg-yellow-900/30 border-yellow-700 text-yellow-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
-								>{isExpanded ? 'collapse' : 'expand'}</button>
-
-								<!-- Remove button -->
-								{#if isConnected && order.active}
-									{#if removeState.status === 'busy'}
-										<span class="text-xs text-gray-500">removing…</span>
-									{:else if removeState.status === 'success'}
-										<span class="text-xs text-green-400">removed ✓</span>
-									{:else}
-										<button on:click={() => removeOrder(order)}
-											class="shrink-0 text-xs px-3 py-1 rounded border border-red-800/60 text-red-400 bg-red-900/20 hover:bg-red-900/40 transition-colors"
-										>remove order</button>
+								<!-- Remove button (stop propagation so click doesn't toggle expand) -->
+								<!-- svelte-ignore a11y-click-events-have-key-events -->
+								<!-- svelte-ignore a11y-no-static-element-interactions -->
+								<div class="shrink-0 ml-auto flex items-center gap-2" on:click|stopPropagation>
+									{#if isConnected && order.active}
+										{#if removeState.status === 'busy'}
+											<span class="text-xs text-gray-600">removing…</span>
+										{:else if removeState.status === 'success'}
+											<span class="text-xs text-green-500">✓ removed</span>
+										{:else}
+											<button on:click={() => removeOrder(order)}
+												class="text-xs px-2.5 py-1 rounded border border-red-900/60 text-red-500 bg-red-900/10 hover:bg-red-900/30 transition-colors"
+											>remove</button>
+										{/if}
 									{/if}
-								{/if}
+								</div>
 							</div>
 
-							<!-- Remove error -->
+							<!-- Remove error inline -->
 							{#if removeState.status === 'error'}
-								<div class="px-5 pb-3 text-xs text-red-400 bg-red-900/10 break-words">{removeState.error}</div>
+								<div class="px-10 py-2 text-xs text-red-400 bg-red-900/10 border-t border-red-900/20 break-words">{removeState.error}</div>
 							{/if}
 
-							<!-- Expanded section -->
+							<!-- ── Expanded panel ─────────────────────────────────────────── -->
 							{#if isExpanded}
-								<div class="border-t border-gray-800 px-5 py-4 space-y-5">
+								<div class="bg-gray-900/40 border-t border-gray-800 px-6 py-4 space-y-4">
 
-									<!-- Vault balances + deposit/withdraw -->
+									<!-- Vault sections -->
 									{#each getVaultSections(order) as section}
 										{#if section.items.length > 0}
 											<div>
-												<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">{section.label}</div>
-												<div class="space-y-2">
+												<div class="text-xs text-gray-600 uppercase tracking-wider mb-2">{section.label}</div>
+												<div class="space-y-1.5">
 													{#each section.items as vault}
 														{@const vk = vaultKey(order.orderHash, section.ioType, vault)}
 														{@const vs = getVaultOp(vk)}
-														<div class="bg-gray-950 rounded-lg border border-gray-800 p-3">
-															<!-- Vault info row -->
+														<div class="bg-gray-950/80 rounded-lg border border-gray-800/60 px-3 py-2.5">
 															<div class="flex flex-wrap items-center gap-3">
-																<span class="text-sm font-semibold {section.color}">{vault.token.symbol ?? '?'}</span>
-																<span class="text-xs text-gray-500 font-mono" title={vault.token.address}>{fmtAddress(vault.token.address)}</span>
-																<div class="flex items-center gap-1">
-																	<span class="text-xs text-gray-500">balance:</span>
-																	<span class="text-xs text-gray-200 font-semibold">{vault.formattedBalance}</span>
+																<!-- Token symbol + balance -->
+																<span class="text-sm font-semibold {section.color} w-16 shrink-0">{vault.token.symbol ?? '?'}</span>
+																<div class="flex items-baseline gap-1">
+																	<span class="text-sm font-semibold text-gray-100">{vault.formattedBalance}</span>
+																	<span class="text-xs text-gray-600">{vault.token.symbol}</span>
 																</div>
-																<span class="text-xs text-gray-600 font-mono" title={vaultIdToBytes32(vault.vaultId)}>vault {vaultIdToBytes32(vault.vaultId).slice(0, 10)}…</span>
-																<!-- Deposit / Withdraw buttons -->
+																<!-- Vault ID -->
+																<span class="text-xs text-gray-700 font-mono hidden sm:block" title={vaultIdToBytes32(vault.vaultId)}>
+																	vault {vaultIdToBytes32(vault.vaultId).slice(0, 10)}…
+																</span>
+																<!-- Token address -->
+																<span class="text-xs text-gray-700 font-mono hidden md:block" title={vault.token.address}>{fmtAddress(vault.token.address)}</span>
+
+																<!-- Action buttons -->
 																{#if isConnected}
-																	<div class="ml-auto flex gap-2">
-																		<button on:click={() => setVaultOp(vk, { mode: vs.mode === 'deposit' ? 'none' : 'deposit', status: 'idle', error: '', result: '' })}
-																			class="text-xs px-2.5 py-1 rounded border transition-colors {vs.mode === 'deposit' ? 'bg-blue-800 border-blue-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
+																	<div class="ml-auto flex gap-1.5">
+																		<button
+																			on:click={() => setVaultOp(vk, { mode: vs.mode === 'deposit' ? 'none' : 'deposit', status: 'idle', error: '', result: '' })}
+																			class="text-xs px-2.5 py-1 rounded border transition-colors {vs.mode === 'deposit' ? 'bg-blue-800 border-blue-700 text-blue-100' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
 																		>deposit</button>
-																		<button on:click={() => setVaultOp(vk, { mode: vs.mode === 'withdraw' ? 'none' : 'withdraw', status: 'idle', error: '', result: '' })}
-																			class="text-xs px-2.5 py-1 rounded border transition-colors {vs.mode === 'withdraw' ? 'bg-purple-800 border-purple-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
+																		<button
+																			on:click={() => setVaultOp(vk, { mode: vs.mode === 'withdraw' ? 'none' : 'withdraw', status: 'idle', error: '', result: '' })}
+																			class="text-xs px-2.5 py-1 rounded border transition-colors {vs.mode === 'withdraw' ? 'bg-purple-800 border-purple-700 text-purple-100' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
 																		>withdraw</button>
 																	</div>
 																{/if}
 															</div>
 
-															<!-- Deposit / withdraw form -->
+															<!-- Inline amount form -->
 															{#if vs.mode !== 'none' && isConnected}
-																<div class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-800 pt-3">
+																<div class="mt-2.5 pt-2.5 border-t border-gray-800/60 flex flex-wrap items-center gap-2">
 																	<input
 																		value={vs.amount}
 																		on:input={(e) => setVaultOp(vk, { amount: e.currentTarget.value })}
 																		placeholder={vs.mode === 'withdraw' ? 'amount (blank = all)' : 'amount'}
-																		class="text-xs px-2 py-1.5 rounded bg-gray-900 border border-gray-700 text-gray-100 w-44 focus:outline-none focus:border-blue-500 font-mono"
+																		class="text-xs px-2.5 py-1.5 rounded bg-gray-900 border border-gray-700 text-gray-100 w-40 focus:outline-none focus:border-blue-500 font-mono"
 																	/>
 																	<button
 																		on:click={() => executeVaultOp(order, section.ioType, vault)}
 																		disabled={vs.status === 'busy'}
 																		class="text-xs px-3 py-1.5 rounded font-semibold disabled:opacity-50 transition-colors {vs.mode === 'deposit' ? 'bg-blue-700 hover:bg-blue-600' : 'bg-purple-700 hover:bg-purple-600'}"
 																	>{vs.status === 'busy' ? (vs.mode === 'deposit' ? 'depositing…' : 'withdrawing…') : vs.mode}</button>
-
 																	{#if vs.status === 'success'}
 																		<span class="text-xs text-green-400">
-																			{#if vs.result}confirmed · <span class="font-mono">{vs.result.slice(0,10)}…</span>
-																			{:else if vs.safeTxHash}queued in Safe · <a href={vs.safeAppUrl} target="_blank" rel="noreferrer" class="underline text-blue-400">view →</a>
+																			{#if vs.result}✓ <span class="font-mono">{vs.result.slice(0,10)}…</span>
+																			{:else if vs.safeTxHash}queued · <a href={vs.safeAppUrl} target="_blank" rel="noreferrer" class="underline text-blue-400">view →</a>
 																			{/if}
 																		</span>
 																	{/if}
@@ -605,56 +665,59 @@
 										{/if}
 									{/each}
 
-									<!-- Order details -->
-									<div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+									<!-- Order metadata grid -->
+									<div class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 pt-1">
 										<div>
-											<div class="text-xs text-gray-600 mb-1">order hash</div>
-											<div class="font-mono text-xs text-gray-300 break-all">{order.orderHash}</div>
+											<div class="text-xs text-gray-700 mb-0.5">hash</div>
+											<div class="font-mono text-xs text-gray-400 break-all">{order.orderHash}</div>
 										</div>
 										<div>
-											<div class="text-xs text-gray-600 mb-1">owner</div>
-											<div class="font-mono text-xs text-gray-300 break-all">{order.owner}</div>
+											<div class="text-xs text-gray-700 mb-0.5">owner</div>
+											<div class="font-mono text-xs text-gray-400 break-all">{order.owner}</div>
 										</div>
 										<div>
-											<div class="text-xs text-gray-600 mb-1">orderbook</div>
-											<div class="font-mono text-xs text-gray-300 break-all">{order.orderbook}</div>
+											<div class="text-xs text-gray-700 mb-0.5">orderbook</div>
+											<div class="font-mono text-xs text-gray-400 break-all">{order.orderbook}</div>
 										</div>
 										<div>
-											<div class="text-xs text-gray-600 mb-1">chain</div>
-											<div class="text-xs text-gray-300">{order.chainId}</div>
-										</div>
-										<div>
-											<div class="text-xs text-gray-600 mb-1">added</div>
-											<div class="text-xs text-gray-300">{fmtTimestamp(order.timestampAdded)}</div>
+											<div class="text-xs text-gray-700 mb-0.5">added</div>
+											<div class="text-xs text-gray-400">{fmtTimestamp(order.timestampAdded)}</div>
 										</div>
 									</div>
 
 									<!-- Rainlang -->
 									{#if order.rainlang}
-										<details>
-											<summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-300">view rainlang</summary>
-											<pre class="mt-2 bg-gray-950 rounded-lg p-4 overflow-x-auto text-xs text-gray-300 leading-relaxed max-h-80 whitespace-pre-wrap break-words">{order.rainlang}</pre>
+										<details class="group">
+											<summary class="text-xs text-gray-600 cursor-pointer hover:text-gray-400 transition-colors list-none flex items-center gap-1.5">
+												<svg class="h-3 w-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+												</svg>
+												rainlang
+											</summary>
+											<pre class="mt-2 bg-gray-950 rounded-lg p-4 overflow-x-auto text-xs text-gray-400 leading-relaxed max-h-72 whitespace-pre-wrap break-words">{order.rainlang}</pre>
 										</details>
 									{/if}
 								</div>
 							{/if}
+
 						</div>
 					{/each}
 				</div>
 
 				<!-- Pagination -->
 				{#if totalCount > PAGE_SIZE}
-					<div class="flex items-center justify-center gap-4 mt-8">
+					<div class="flex items-center justify-center gap-3 mt-6">
 						<button on:click={prevPage} disabled={currentPage <= 1 || fetching}
-							class="text-sm px-4 py-2 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+							class="text-xs px-3 py-1.5 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 						>← prev</button>
-						<span class="text-sm text-gray-500">{currentPage} / {totalPages}</span>
+						<span class="text-xs text-gray-600">{currentPage} / {totalPages}</span>
 						<button on:click={nextPage} disabled={currentPage >= totalPages || fetching}
-							class="text-sm px-4 py-2 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+							class="text-xs px-3 py-1.5 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 						>next →</button>
 					</div>
 				{/if}
 			{/if}
+
 		{/if}
 	</main>
 </div>
