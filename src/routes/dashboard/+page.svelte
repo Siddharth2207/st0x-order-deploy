@@ -649,8 +649,7 @@
 												<div class="space-y-1.5">
 													{#each section.items as vault}
 														{@const vk = vaultKey(order.orderHash, section.ioType, vault)}
-														{#key vaultOpStates[vk]}
-														{@const vs = vaultOpStates[vk] ?? EMPTY_VAULT_OP}
+														{#each [vaultOpStates[vk] ?? EMPTY_VAULT_OP] as vs}
 														<div class="bg-gray-950/80 rounded-lg border border-gray-800/60 px-3 py-2.5">
 															<div class="flex flex-wrap items-center gap-3">
 																<!-- Token symbol + balance -->
@@ -714,7 +713,7 @@
 																</div>
 															{/if}
 														</div>
-														{/key}
+														{/each}
 													{/each}
 												</div>
 											</div>
