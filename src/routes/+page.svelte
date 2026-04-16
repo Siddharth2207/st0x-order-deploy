@@ -65,6 +65,17 @@
 		? (turnkeyWallet?.address ?? '')
 		: ($signerAddress ?? '');
 
+	// Invalidate stale order previews when the signer changes (mode switch or wallet reconnect)
+	let prevConnectedAddress = '';
+	$: if (connectedAddress !== prevConnectedAddress) {
+		if (prevConnectedAddress !== '') {
+			orderStates = orderStates.map((s) =>
+				s.status === 'ready' ? { ...s, status: 'idle', result: null } : s
+			);
+		}
+		prevConnectedAddress = connectedAddress;
+	}
+
 	// ── Strategy selection ─────────────────────────────────────────────────────
 
 	let selectedStrategy: StrategyConfig = STRATEGIES[0];
@@ -342,247 +353,249 @@
 		{/if}
 	</section>
 
-	<!-- ── Connect prompt (for EOA / Safe modes) ───────────────────────────── -->
+	<!-- ── Strategy selector ───────────────────────────────────────────────── -->
+	<section class="mb-6">
+		<label class="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Strategy</label>
+		<div class="flex flex-wrap gap-2">
+			{#each STRATEGIES as s (s.name)}
+				<button
+					on:click={() => selectStrategy(s)}
+					class="text-sm px-4 py-2 rounded border transition-colors {selectedStrategy.name === s.name ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
+				>{s.name}</button>
+			{/each}
+		</div>
+	</section>
+
 	{#if !isConnected}
-		{#if deploymentMode === 'turnkey'}
-			<div class="text-center text-gray-500 mt-20">Enter your Turnkey credentials above and click connect.</div>
-		{:else}
-			<div class="text-center text-gray-500 mt-20">Connect your wallet to deploy orders.</div>
-		{/if}
-	{:else}
+		<div class="mb-4 text-xs text-gray-500 bg-gray-900/50 rounded px-4 py-2 border border-gray-800">
+			{#if deploymentMode === 'turnkey'}
+				Connect Turnkey above to enable preview &amp; deploy.
+			{:else if deploymentMode === 'safe'}
+				Connect your wallet (header) to enable preview &amp; deploy.
+			{:else}
+				Connect your wallet (header) to enable preview &amp; deploy.
+			{/if}
+		</div>
+	{/if}
 
-		<!-- ── Strategy selector ───────────────────────────────────────────────── -->
-		<section class="mb-6">
-			<label class="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Strategy</label>
-			<div class="flex flex-wrap gap-2">
-				{#each STRATEGIES as s (s.name)}
-					<button
-						on:click={() => selectStrategy(s)}
-						class="text-sm px-4 py-2 rounded border transition-colors {selectedStrategy.name === s.name ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
-					>{s.name}</button>
-				{/each}
-			</div>
-		</section>
+	<!-- ── Order cards ─────────────────────────────────────────────────────── -->
+	<div class="grid md:grid-cols-2 gap-6 mb-10">
+		{#each selectedStrategy.orders as order, i (order.label)}
+			{@const state = orderStates[i]}
+			<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col gap-4">
 
-		<!-- ── Order cards ─────────────────────────────────────────────────────── -->
-		<div class="grid md:grid-cols-2 gap-6 mb-10">
-			{#each selectedStrategy.orders as order, i (order.label)}
-				{@const state = orderStates[i]}
-				<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col gap-4">
-
-					<!-- Card header -->
-					<div class="flex items-start justify-between gap-2">
-						<div>
-							<h2 class="text-base font-semibold">{order.label}</h2>
-							{#if order.description}
-								<p class="text-xs text-gray-500 mt-1">{order.description}</p>
-							{/if}
-							<p class="text-xs text-gray-600 mt-1">{order.strategyType} · {order.deploymentKey}</p>
-						</div>
-						<button
-							on:click={() => toggleCustomize(i)}
-							class="shrink-0 text-xs px-2 py-1 rounded border transition-colors {showCustomize[i] ? 'bg-yellow-900/40 border-yellow-700 text-yellow-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
-						>customize</button>
+				<!-- Card header -->
+				<div class="flex items-start justify-between gap-2">
+					<div>
+						<h2 class="text-base font-semibold">{order.label}</h2>
+						{#if order.description}
+							<p class="text-xs text-gray-500 mt-1">{order.description}</p>
+						{/if}
+						<p class="text-xs text-gray-600 mt-1">{order.strategyType} · {order.deploymentKey}</p>
 					</div>
+					<button
+						on:click={() => toggleCustomize(i)}
+						class="shrink-0 text-xs px-2 py-1 rounded border transition-colors {showCustomize[i] ? 'bg-yellow-900/40 border-yellow-700 text-yellow-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
+					>customize</button>
+				</div>
 
-					<!-- Customization panel -->
-					{#if showCustomize[i]}
-						<div class="rounded-lg border border-gray-700 bg-gray-950 p-4 flex flex-col gap-4">
-							{#if Object.keys(state.customFieldValues).length > 0}
-								<div>
-									<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Parameters</div>
-									<div class="flex flex-col gap-2">
-										{#each Object.keys(state.customFieldValues) as key}
-											<label class="flex flex-col gap-1">
-												<span class="text-xs text-gray-400">{fmtKey(key)}</span>
-												<input
-													type="text"
-													value={state.customFieldValues[key]}
-													on:input={(e) => setOrderState(i, { customFieldValues: { ...state.customFieldValues, [key]: e.currentTarget.value } })}
-													class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
-												/>
-											</label>
-										{/each}
-									</div>
+				<!-- Customization panel -->
+				{#if showCustomize[i]}
+					<div class="rounded-lg border border-gray-700 bg-gray-950 p-4 flex flex-col gap-4">
+						{#if Object.keys(state.customFieldValues).length > 0}
+							<div>
+								<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Parameters</div>
+								<div class="flex flex-col gap-2">
+									{#each Object.keys(state.customFieldValues) as key}
+										<label class="flex flex-col gap-1">
+											<span class="text-xs text-gray-400">{fmtKey(key)}</span>
+											<input
+												type="text"
+												value={state.customFieldValues[key]}
+												on:input={(e) => setOrderState(i, { customFieldValues: { ...state.customFieldValues, [key]: e.currentTarget.value } })}
+												class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
+											/>
+										</label>
+									{/each}
 								</div>
-							{/if}
-							{#if Object.keys(state.customDeposits).length > 0}
-								<div>
-									<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Deposits</div>
-									<div class="flex flex-col gap-2">
-										{#each Object.keys(state.customDeposits) as key}
-											<label class="flex flex-col gap-1">
-												<span class="text-xs text-gray-400">token slot <span class="text-gray-300">{key}</span></span>
-												<input
-													type="text"
-													value={state.customDeposits[key]}
-													on:input={(e) => setOrderState(i, { customDeposits: { ...state.customDeposits, [key]: e.currentTarget.value } })}
-													class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
-												/>
-											</label>
-										{/each}
-									</div>
+							</div>
+						{/if}
+						{#if Object.keys(state.customDeposits).length > 0}
+							<div>
+								<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Deposits</div>
+								<div class="flex flex-col gap-2">
+									{#each Object.keys(state.customDeposits) as key}
+										<label class="flex flex-col gap-1">
+											<span class="text-xs text-gray-400">token slot <span class="text-gray-300">{key}</span></span>
+											<input
+												type="text"
+												value={state.customDeposits[key]}
+												on:input={(e) => setOrderState(i, { customDeposits: { ...state.customDeposits, [key]: e.currentTarget.value } })}
+												class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
+											/>
+										</label>
+									{/each}
 								</div>
-							{/if}
-							<!-- Vault IDs from tokens.yaml (read-only display) -->
-							{#if order.vaultIds && Object.keys(order.vaultIds).length > 0}
-								<div>
-									<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Word (vault) IDs</div>
-									<div class="flex flex-col gap-1">
-										{#each Object.entries(order.vaultIds) as [ioType, tokens]}
-											{#each Object.entries(tokens) as [tokenKey, vaultId]}
-												<div class="flex gap-2 text-xs">
-													<span class="text-gray-500 w-16 shrink-0">{ioType}/{tokenKey}</span>
-													<span class="text-gray-400 font-mono break-all">{vaultId}</span>
-												</div>
-											{/each}
-										{/each}
-									</div>
-								</div>
-							{/if}
-							<button
-								on:click={() => resetCustomize(i)}
-								class="self-start text-xs text-gray-500 hover:text-gray-300 underline underline-offset-2"
-							>reset to defaults</button>
-						</div>
-					{/if}
-
-					<!-- Composed rainlang -->
-					{#if state.result?.composedRainlang}
-						<details class="text-xs">
-							<summary class="cursor-pointer text-gray-400 hover:text-gray-200">view composed rainlang</summary>
-							<pre class="mt-2 bg-gray-950 rounded p-3 overflow-auto text-gray-400 max-h-48 text-xs leading-relaxed">{state.result.composedRainlang}</pre>
-						</details>
-					{/if}
-
-					<!-- Error -->
-					{#if state.error}
-						<div class="text-xs text-red-400 bg-red-900/20 rounded p-3 break-words">{state.error}</div>
-					{/if}
-
-					<!-- Success -->
-					{#if state.status === 'success'}
-						<div class="text-xs text-green-400 bg-green-900/20 rounded p-3">
-							{#if state.txHash}
-								<div>tx confirmed</div>
-								<div class="mt-1 text-gray-500 break-all">{state.txHash}</div>
-							{:else if state.safeTxHash}
-								<div>proposed to SAFE queue</div>
-								<div class="mt-1 text-gray-500 break-all">{state.safeTxHash}</div>
-								{#if state.safeAppUrl}
-									<a href={state.safeAppUrl} target="_blank" rel="noreferrer" class="mt-2 inline-block text-blue-400 underline">view in safe app →</a>
-								{/if}
-							{/if}
-							<!-- Show resolved vault IDs after deploy -->
-							{#if state.result?.vaultIds && Object.keys(state.result.vaultIds).length > 0}
-								<div class="mt-2 border-t border-green-900/40 pt-2">
-									<div class="text-green-600 mb-1">vault IDs</div>
-									{#each Object.entries(state.result.vaultIds) as [ioType, tokens]}
-										{#each Object.entries(tokens) as [tokenKey, vid]}
+							</div>
+						{/if}
+						<!-- Vault IDs from tokens.yaml (read-only display) -->
+						{#if order.vaultIds && Object.keys(order.vaultIds).length > 0}
+							<div>
+								<div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Word (vault) IDs</div>
+								<div class="flex flex-col gap-1">
+									{#each Object.entries(order.vaultIds) as [ioType, tokens]}
+										{#each Object.entries(tokens) as [tokenKey, vaultId]}
 											<div class="flex gap-2 text-xs">
 												<span class="text-gray-500 w-16 shrink-0">{ioType}/{tokenKey}</span>
-												<span class="font-mono break-all text-gray-400">{vid}</span>
+												<span class="text-gray-400 font-mono break-all">{vaultId}</span>
 											</div>
 										{/each}
 									{/each}
 								</div>
-							{/if}
-						</div>
-					{/if}
+							</div>
+						{/if}
+						<button
+							on:click={() => resetCustomize(i)}
+							class="self-start text-xs text-gray-500 hover:text-gray-300 underline underline-offset-2"
+						>reset to defaults</button>
+					</div>
+				{/if}
 
-					<!-- Actions -->
-					<div class="flex gap-3 mt-auto">
-						{#if state.status === 'idle' || state.status === 'error'}
-							<button on:click={() => buildOrder(i)} class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">preview</button>
-						{:else if state.status === 'loading'}
-							<div class="flex-1 text-sm py-2 text-center text-gray-500">building…</div>
-						{:else if state.status === 'ready'}
-							<button on:click={() => buildOrder(i)} class="text-sm py-2 px-3 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">rebuild</button>
-							<button on:click={() => deployOrder(i)} class="flex-1 text-sm py-2 rounded bg-blue-700 hover:bg-blue-600 font-semibold">deploy</button>
-						{:else if state.status === 'deploying'}
-							<div class="flex-1 text-sm py-2 text-center text-gray-500">deploying…</div>
-						{:else if state.status === 'success'}
-							<button on:click={() => buildOrder(i)} class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">deploy another</button>
+				<!-- Composed rainlang -->
+				{#if state.result?.composedRainlang}
+					<details class="text-xs">
+						<summary class="cursor-pointer text-gray-400 hover:text-gray-200">view composed rainlang</summary>
+						<pre class="mt-2 bg-gray-950 rounded p-3 overflow-auto text-gray-400 max-h-48 text-xs leading-relaxed">{state.result.composedRainlang}</pre>
+					</details>
+				{/if}
+
+				<!-- Error -->
+				{#if state.error}
+					<div class="text-xs text-red-400 bg-red-900/20 rounded p-3 break-words">{state.error}</div>
+				{/if}
+
+				<!-- Success -->
+				{#if state.status === 'success'}
+					<div class="text-xs text-green-400 bg-green-900/20 rounded p-3">
+						{#if state.txHash}
+							<div>tx confirmed</div>
+							<div class="mt-1 text-gray-500 break-all">{state.txHash}</div>
+						{:else if state.safeTxHash}
+							<div>proposed to SAFE queue</div>
+							<div class="mt-1 text-gray-500 break-all">{state.safeTxHash}</div>
+							{#if state.safeAppUrl}
+								<a href={state.safeAppUrl} target="_blank" rel="noreferrer" class="mt-2 inline-block text-blue-400 underline">view in safe app →</a>
+							{/if}
+						{/if}
+						<!-- Show resolved vault IDs after deploy -->
+						{#if state.result?.vaultIds && Object.keys(state.result.vaultIds).length > 0}
+							<div class="mt-2 border-t border-green-900/40 pt-2">
+								<div class="text-green-600 mb-1">vault IDs</div>
+								{#each Object.entries(state.result.vaultIds) as [ioType, tokens]}
+									{#each Object.entries(tokens) as [tokenKey, vid]}
+										<div class="flex gap-2 text-xs">
+											<span class="text-gray-500 w-16 shrink-0">{ioType}/{tokenKey}</span>
+											<span class="font-mono break-all text-gray-400">{vid}</span>
+										</div>
+									{/each}
+								{/each}
+							</div>
 						{/if}
 					</div>
-				</div>
-			{/each}
-		</div>
+				{/if}
 
-		<!-- ── Vault operations ────────────────────────────────────────────────── -->
-		<section class="border-t border-gray-800 pt-8">
-			<h2 class="text-sm font-semibold text-gray-300 mb-4 uppercase tracking-wider">Vault operations</h2>
-
-			<!-- Op toggle -->
-			<div class="flex gap-3 mb-4">
-				<button
-					on:click={() => { vaultOp = 'deposit'; vaultStatus = 'idle'; }}
-					class="text-sm px-4 py-2 rounded border transition-colors {vaultOp === 'deposit' ? 'bg-blue-800 border-blue-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
-				>deposit</button>
-				<button
-					on:click={() => { vaultOp = 'withdraw'; vaultStatus = 'idle'; }}
-					class="text-sm px-4 py-2 rounded border transition-colors {vaultOp === 'withdraw' ? 'bg-purple-800 border-purple-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
-				>withdraw</button>
-			</div>
-
-			<!-- Form -->
-			<div class="grid sm:grid-cols-2 gap-4 max-w-2xl">
-				<label class="flex flex-col gap-1">
-					<span class="text-xs text-gray-400">Token address</span>
-					<input bind:value={vaultToken} placeholder="0x…" class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono" />
-				</label>
-				<label class="flex flex-col gap-1">
-					<span class="text-xs text-gray-400">Vault ID (bytes32)</span>
-					<input bind:value={vaultId} placeholder="0x0000…0001" class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono" />
-				</label>
-				<label class="flex flex-col gap-1">
-					<span class="text-xs text-gray-400">Amount{vaultOp === 'withdraw' ? ' (leave blank to withdraw all)' : ''}</span>
-					<input bind:value={vaultAmount} placeholder={vaultOp === 'withdraw' ? 'all' : '100.0'} class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono" />
-				</label>
-				<label class="flex flex-col gap-1">
-					<span class="text-xs text-gray-400">Chain</span>
-					<select bind:value={vaultChainId} class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono">
-						<option value={8453}>Base (8453)</option>
-						<option value={137}>Polygon (137)</option>
-						<option value={42161}>Arbitrum (42161)</option>
-					</select>
-				</label>
-				<label class="flex flex-col gap-1 sm:col-span-2">
-					<span class="text-xs text-gray-400">Orderbook address</span>
-					<input bind:value={vaultOrderbook} class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono" />
-				</label>
-			</div>
-
-			<!-- Submit -->
-			<button
-				on:click={executeVaultOp}
-				disabled={vaultStatus === 'busy'}
-				class="mt-4 text-sm px-5 py-2 rounded font-semibold disabled:opacity-50 transition-colors {vaultOp === 'deposit' ? 'bg-blue-700 hover:bg-blue-600' : 'bg-purple-700 hover:bg-purple-600'}"
-			>{vaultStatus === 'busy' ? (vaultOp === 'deposit' ? 'depositing…' : 'withdrawing…') : vaultOp}</button>
-
-			<!-- Vault result -->
-			{#if vaultStatus === 'success'}
-				<div class="mt-3 text-xs text-green-400 bg-green-900/20 rounded p-3 max-w-2xl">
-					{#if vaultResult}
-						<div>{vaultOp} confirmed</div>
-						<div class="mt-1 text-gray-500 break-all">{vaultResult}</div>
-					{:else if vaultSafeTxHash}
-						<div>{vaultOp} proposed to SAFE queue</div>
-						<div class="mt-1 text-gray-500 break-all">{vaultSafeTxHash}</div>
-						{#if vaultSafeAppUrl}
-							<a href={vaultSafeAppUrl} target="_blank" rel="noreferrer" class="mt-2 inline-block text-blue-400 underline">view in safe app →</a>
-						{/if}
+				<!-- Actions -->
+				<div class="flex gap-3 mt-auto">
+					{#if state.status === 'idle' || state.status === 'error'}
+						<button on:click={() => buildOrder(i)} disabled={!isConnected} class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">preview</button>
+					{:else if state.status === 'loading'}
+						<div class="flex-1 text-sm py-2 text-center text-gray-500">building…</div>
+					{:else if state.status === 'ready'}
+						<button on:click={() => buildOrder(i)} disabled={!isConnected} class="text-sm py-2 px-3 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">rebuild</button>
+						<button on:click={() => deployOrder(i)} disabled={!isConnected} class="flex-1 text-sm py-2 rounded bg-blue-700 hover:bg-blue-600 font-semibold disabled:opacity-40 disabled:cursor-not-allowed">deploy</button>
+					{:else if state.status === 'deploying'}
+						<div class="flex-1 text-sm py-2 text-center text-gray-500">deploying…</div>
+					{:else if state.status === 'success'}
+						<button on:click={() => buildOrder(i)} class="flex-1 text-sm py-2 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">deploy another</button>
 					{/if}
 				</div>
-			{/if}
-			{#if vaultStatus === 'error'}
-				<div class="mt-3 text-xs text-red-400 bg-red-900/20 rounded p-3 max-w-2xl break-words">{vaultError}</div>
-			{/if}
+			</div>
+		{/each}
+	</div>
 
-			{#if deploymentMode === 'safe' && vaultOp === 'deposit'}
-				<p class="mt-2 text-xs text-gray-600">Safe deposit: approve + deposit4 are proposed as two sequential transactions to the SAFE queue.</p>
-			{/if}
-		</section>
+	<!-- ── Vault operations ────────────────────────────────────────────────── -->
+	<section class="border-t border-gray-800 pt-8">
+		<h2 class="text-sm font-semibold text-gray-300 mb-4 uppercase tracking-wider">Vault operations</h2>
 
-	{/if}
+		<!-- Op toggle -->
+		<div class="flex gap-3 mb-4">
+			<button
+				on:click={() => { vaultOp = 'deposit'; vaultStatus = 'idle'; }}
+				class="text-sm px-4 py-2 rounded border transition-colors {vaultOp === 'deposit' ? 'bg-blue-800 border-blue-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
+			>deposit</button>
+			<button
+				on:click={() => { vaultOp = 'withdraw'; vaultStatus = 'idle'; }}
+				class="text-sm px-4 py-2 rounded border transition-colors {vaultOp === 'withdraw' ? 'bg-purple-800 border-purple-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
+			>withdraw</button>
+		</div>
+
+		<!-- Form -->
+		<div class="grid sm:grid-cols-2 gap-4 max-w-2xl">
+			<label class="flex flex-col gap-1">
+				<span class="text-xs text-gray-400">Token address</span>
+				<input bind:value={vaultToken} placeholder="0x…" class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono" />
+			</label>
+			<label class="flex flex-col gap-1">
+				<span class="text-xs text-gray-400">Vault ID (bytes32)</span>
+				<input bind:value={vaultId} placeholder="0x0000…0001" class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono" />
+			</label>
+			<label class="flex flex-col gap-1">
+				<span class="text-xs text-gray-400">Amount{vaultOp === 'withdraw' ? ' (leave blank to withdraw all)' : ''}</span>
+				<input bind:value={vaultAmount} placeholder={vaultOp === 'withdraw' ? 'all' : '100.0'} class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono" />
+			</label>
+			<label class="flex flex-col gap-1">
+				<span class="text-xs text-gray-400">Chain</span>
+				<select bind:value={vaultChainId} class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono">
+					<option value={8453}>Base (8453)</option>
+					<option value={137}>Polygon (137)</option>
+					<option value={42161}>Arbitrum (42161)</option>
+				</select>
+			</label>
+			<label class="flex flex-col gap-1 sm:col-span-2">
+				<span class="text-xs text-gray-400">Orderbook address</span>
+				<input bind:value={vaultOrderbook} class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono" />
+			</label>
+		</div>
+
+		<!-- Submit -->
+		<button
+			on:click={executeVaultOp}
+			disabled={vaultStatus === 'busy' || !isConnected}
+			class="mt-4 text-sm px-5 py-2 rounded font-semibold disabled:opacity-50 transition-colors {vaultOp === 'deposit' ? 'bg-blue-700 hover:bg-blue-600' : 'bg-purple-700 hover:bg-purple-600'}"
+		>{vaultStatus === 'busy' ? (vaultOp === 'deposit' ? 'depositing…' : 'withdrawing…') : vaultOp}</button>
+
+		<!-- Vault result -->
+		{#if vaultStatus === 'success'}
+			<div class="mt-3 text-xs text-green-400 bg-green-900/20 rounded p-3 max-w-2xl">
+				{#if vaultResult}
+					<div>{vaultOp} confirmed</div>
+					<div class="mt-1 text-gray-500 break-all">{vaultResult}</div>
+				{:else if vaultSafeTxHash}
+					<div>{vaultOp} proposed to SAFE queue</div>
+					<div class="mt-1 text-gray-500 break-all">{vaultSafeTxHash}</div>
+					{#if vaultSafeAppUrl}
+						<a href={vaultSafeAppUrl} target="_blank" rel="noreferrer" class="mt-2 inline-block text-blue-400 underline">view in safe app →</a>
+					{/if}
+				{/if}
+			</div>
+		{/if}
+		{#if vaultStatus === 'error'}
+			<div class="mt-3 text-xs text-red-400 bg-red-900/20 rounded p-3 max-w-2xl break-words">{vaultError}</div>
+		{/if}
+
+		{#if deploymentMode === 'safe' && vaultOp === 'deposit'}
+			<p class="mt-2 text-xs text-gray-600">Safe deposit: approve + deposit4 are proposed as two sequential transactions to the SAFE queue.</p>
+		{/if}
+	</section>
+
 </div>
