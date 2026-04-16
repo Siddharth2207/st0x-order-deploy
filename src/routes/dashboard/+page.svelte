@@ -112,10 +112,11 @@
 
 	// ── Remove order state ─────────────────────────────────────────────────────
 	type RemoveState = { status: 'idle' | 'busy' | 'success' | 'error'; error: string };
-	let removeStates = new Map<string, RemoveState>(); // orderHash → state
+	let removeStates: Record<string, RemoveState> = {};
 
 	// ── Vault op state per vault ───────────────────────────────────────────────
 	// key: `${orderHash}:${ioType}:${vaultId}`
+	// Plain object (not Map) so Svelte's reactivity tracks mutations correctly.
 	type VaultOpState = {
 		mode: 'none' | 'deposit' | 'withdraw';
 		amount: string;
@@ -125,20 +126,18 @@
 		safeTxHash: string;
 		safeAppUrl: string;
 	};
-	let vaultOpStates = new Map<string, VaultOpState>();
+	const EMPTY_VAULT_OP: VaultOpState = { mode: 'none', amount: '', status: 'idle', error: '', result: '', safeTxHash: '', safeAppUrl: '' };
+	let vaultOpStates: Record<string, VaultOpState> = {};
 
 	function vaultKey(orderHash: string, ioType: 'input' | 'output', vault: RaindexVault) {
 		return `${orderHash}:${ioType}:${vault.vaultId}`;
 	}
 	function getVaultOp(key: string): VaultOpState {
-		if (!vaultOpStates.has(key)) {
-			vaultOpStates.set(key, { mode: 'none', amount: '', status: 'idle', error: '', result: '', safeTxHash: '', safeAppUrl: '' });
-		}
-		return vaultOpStates.get(key)!;
+		return vaultOpStates[key] ?? EMPTY_VAULT_OP;
 	}
 	function setVaultOp(key: string, patch: Partial<VaultOpState>) {
-		vaultOpStates.set(key, { ...getVaultOp(key), ...patch });
-		vaultOpStates = vaultOpStates;
+		// Object spread + reassign triggers Svelte reactivity reliably
+		vaultOpStates = { ...vaultOpStates, [key]: { ...getVaultOp(key), ...patch } };
 	}
 	function toggleVaultMode(key: string, currentMode: VaultOpState['mode'], nextMode: 'deposit' | 'withdraw') {
 		setVaultOp(key, {
@@ -287,8 +286,7 @@
 	// ── Remove order ───────────────────────────────────────────────────────────
 	async function removeOrder(order: RaindexOrder) {
 		const key = order.orderHash;
-		removeStates.set(key, { status: 'busy', error: '' });
-		removeStates = removeStates;
+		removeStates = { ...removeStates, [key]: { status: 'busy', error: '' } };
 		try {
 			const r = order.getRemoveCalldata();
 			if (r.error) throw new Error(r.error.readableMsg);
@@ -317,12 +315,11 @@
 				await sendViaTurnkey([{ to: order.orderbook, data: calldata }], order.chainId);
 			}
 
-			removeStates.set(key, { status: 'success', error: '' });
+			removeStates = { ...removeStates, [key]: { status: 'success', error: '' } };
 			// Refresh so removed order disappears
 			await fetchOrders();
 		} catch (e) {
-			removeStates.set(key, { status: 'error', error: e instanceof Error ? e.message : String(e) });
-			removeStates = removeStates;
+			removeStates = { ...removeStates, [key]: { status: 'error', error: e instanceof Error ? e.message : String(e) } };
 		}
 	}
 
@@ -566,7 +563,7 @@
 
 					{#each orders as order (order.orderHash)}
 						{@const isExpanded = expandedOrders.has(order.orderHash)}
-						{@const removeState = removeStates.get(order.orderHash) ?? { status: 'idle', error: '' }}
+						{@const removeState = removeStates[order.orderHash] ?? { status: 'idle', error: '' }}
 						<div class="border-b border-gray-800 last:border-0 {!order.active ? 'opacity-50' : ''}">
 
 							<!-- ── Dense order row ──────────────────────────────────────── -->
