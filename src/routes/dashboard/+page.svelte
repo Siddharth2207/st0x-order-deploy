@@ -518,6 +518,20 @@
 				<div class="text-center text-gray-700 py-20 text-sm">no orders found</div>
 			{:else}
 				<div class="rounded-xl border border-gray-800 overflow-hidden">
+					<!-- Column headers -->
+					<div
+						class="grid items-center gap-0 border-b border-gray-800 bg-gray-900/80"
+						style="grid-template-columns: 2rem 0.75rem 8rem 5.5rem 1fr auto auto"
+					>
+						<div></div>
+						<div></div>
+						<div class="py-2 pr-3 text-xs text-gray-600 uppercase tracking-wider">pair</div>
+						<div class="py-2 pr-3 text-xs text-gray-600 uppercase tracking-wider">hash</div>
+						<div class="py-2 pr-3 text-xs text-gray-600 uppercase tracking-wider">owner</div>
+						<div class="py-2 pr-4 text-xs text-gray-600 uppercase tracking-wider hidden lg:block">added</div>
+						<div class="py-2 pr-4"></div>
+					</div>
+
 					{#each orders as order (order.orderHash)}
 						{@const isExpanded = expandedOrders.has(order.orderHash)}
 						{@const removeState = removeStates.get(order.orderHash) ?? { status: 'idle', error: '' }}
@@ -525,59 +539,57 @@
 
 							<!-- ── Dense order row ──────────────────────────────────────── -->
 							<div
-								class="px-4 py-3 flex items-center gap-3 hover:bg-gray-900/60 transition-colors cursor-pointer select-none"
+								class="grid items-center gap-0 hover:bg-gray-900/60 transition-colors cursor-pointer select-none"
+								style="grid-template-columns: 2rem 0.75rem 8rem 5.5rem 1fr auto auto"
 								on:click={() => toggleOrder(order.orderHash)}
 								on:keydown={(e) => e.key === 'Enter' && toggleOrder(order.orderHash)}
 								role="button"
 								tabindex="0"
 							>
-								<!-- Expand chevron -->
-								<svg class="h-3.5 w-3.5 text-gray-600 shrink-0 transition-transform {isExpanded ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-								</svg>
+								<!-- Expand chevron (col 1) -->
+								<div class="flex items-center justify-center py-3">
+									<svg class="h-3 w-3 text-gray-600 transition-transform duration-150 {isExpanded ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+									</svg>
+								</div>
 
-								<!-- Status dot -->
-								<span class="shrink-0 h-2 w-2 rounded-full {order.active ? 'bg-green-500' : 'bg-gray-600'}"></span>
+								<!-- Status dot (col 2) -->
+								<div class="flex items-center py-3">
+									<span class="h-1.5 w-1.5 rounded-full {order.active ? 'bg-green-500' : 'bg-gray-600'}"></span>
+								</div>
 
-								<!-- Pair -->
-								<span class="text-xs font-semibold text-blue-300 w-28 shrink-0 truncate">{getPairKey(order)}</span>
+								<!-- Pair (col 3) -->
+								<div class="py-3 pr-3 min-w-0">
+									<span class="text-xs font-semibold text-blue-300 block truncate">{getPairKey(order)}</span>
+								</div>
 
-								<!-- Hash -->
-								<span class="font-mono text-xs text-gray-400 w-20 shrink-0" title={order.orderHash}>{fmtAddress(order.orderHash)}</span>
+								<!-- Hash (col 4) -->
+								<div class="py-3 pr-3 min-w-0">
+									<span class="font-mono text-xs text-gray-500 block truncate" title={order.orderHash}>{fmtAddress(order.orderHash)}</span>
+								</div>
 
-								<!-- Owner -->
-								<span class="font-mono text-xs text-gray-600 hidden md:block truncate flex-1" title={order.owner}>
-									<span class="text-gray-700">owner </span>{fmtAddress(order.owner)}
-								</span>
+								<!-- Owner (col 5 — flex-1, truncates) -->
+								<div class="py-3 pr-3 min-w-0">
+									<span class="font-mono text-xs text-gray-700 block truncate" title={order.owner}>{fmtAddress(order.owner)}</span>
+								</div>
 
-								<!-- Vault balance summary -->
-								<span class="text-xs text-gray-500 hidden lg:flex items-center gap-2 shrink-0">
-									{#each [...new Set([...order.inputsList.items, ...order.outputsList.items].map(v => v.token.symbol ?? '?'))] as sym}
-										{@const vault = [...order.inputsList.items, ...order.outputsList.items].find(v => (v.token.symbol ?? '?') === sym)}
-										{#if vault}
-											<span class="text-gray-400">{vault.formattedBalance} <span class="text-gray-600">{sym}</span></span>
-										{/if}
-									{/each}
-								</span>
+								<!-- Timestamp (col 6) -->
+								<div class="py-3 pr-4 hidden lg:block">
+									<span class="text-xs text-gray-700 whitespace-nowrap">{fmtTimestamp(order.timestampAdded)}</span>
+								</div>
 
-								<!-- Chain badge -->
-								<span class="shrink-0 text-xs text-gray-700 hidden sm:block">#{order.chainId}</span>
-
-								<!-- Timestamp -->
-								<span class="shrink-0 text-xs text-gray-700 hidden xl:block">{fmtTimestamp(order.timestampAdded)}</span>
-
-								<!-- Remove button (stop propagation so click doesn't toggle expand) -->
+								<!-- Actions (col 7 — stop propagation) -->
 								<!-- svelte-ignore a11y-click-events-have-key-events -->
 								<!-- svelte-ignore a11y-no-static-element-interactions -->
-								<div class="shrink-0 ml-auto flex items-center gap-2" on:click|stopPropagation>
+								<div class="py-3 pr-4 flex items-center gap-2" on:click|stopPropagation>
 									{#if isConnected && order.active}
 										{#if removeState.status === 'busy'}
-											<span class="text-xs text-gray-600">removing…</span>
+											<span class="text-xs text-gray-600 whitespace-nowrap">removing…</span>
 										{:else if removeState.status === 'success'}
-											<span class="text-xs text-green-500">✓ removed</span>
+											<span class="text-xs text-green-500 whitespace-nowrap">✓ removed</span>
 										{:else}
 											<button on:click={() => removeOrder(order)}
-												class="text-xs px-2.5 py-1 rounded border border-red-900/60 text-red-500 bg-red-900/10 hover:bg-red-900/30 transition-colors"
+												class="text-xs px-2.5 py-1 rounded border border-red-900/60 text-red-500 bg-red-900/10 hover:bg-red-900/30 transition-colors whitespace-nowrap"
 											>remove</button>
 										{/if}
 									{/if}
