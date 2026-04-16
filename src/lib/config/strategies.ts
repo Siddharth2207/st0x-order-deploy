@@ -16,6 +16,14 @@ export interface OrderConfig {
   fieldValues: Record<string, string>;
   /** { guiTokenKey: "humanAmount" } — passed to gui.setDeposit(); "0" entries are skipped */
   deposits: Record<string, string>;
+  /**
+   * Optional vault IDs (Rain "word IDs") to set on the GUI before deployment.
+   * Outer key: "input" | "output" (io direction). Inner key: token key from selectTokens.
+   * When set, orders from the same strategy pair share vaults — deposited tokens
+   * are immediately available across buy and sell orders.
+   * Example: { input: { input: "0x0000...0002" }, output: { output: "0x0000...0001" } }
+   */
+  vaultIds?: Record<string, Record<string, string>>;
 }
 
 export interface StrategyConfig {

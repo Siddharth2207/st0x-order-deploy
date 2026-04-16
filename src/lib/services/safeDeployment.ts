@@ -11,10 +11,10 @@
  */
 
 import type { DeploymentTransactionArgs } from "@rainlanguage/orderbook";
-import { hashTypedData } from "viem";
+import { hashTypedData, getAddress } from "viem";
 import type { Hex } from "viem";
 
-const SAFE_TX_SERVICE_URLS: Record<number, string> = {
+export const SAFE_TX_SERVICE_URLS: Record<number, string> = {
   8453: "https://safe-transaction-base.safe.global", // Base
   137: "https://safe-transaction-polygon.safe.global", // Polygon
   42161: "https://safe-transaction-arbitrum.safe.global", // Arbitrum
@@ -49,14 +49,15 @@ const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
  * the highest pending-queue nonce + 1, so new proposals never collide with
  * already-queued transactions.
  */
-async function getNextNonce(
+export async function getNextNonce(
   txServiceUrl: string,
   safeAddress: string,
 ): Promise<number> {
+  const safeCs = getAddress(safeAddress);
   const [safeRes, pendingRes] = await Promise.all([
-    fetch(`${txServiceUrl}/api/v1/safes/${safeAddress}/`),
+    fetch(`${txServiceUrl}/api/v1/safes/${safeCs}/`),
     fetch(
-      `${txServiceUrl}/api/v1/safes/${safeAddress}/multisig-transactions/?ordering=-nonce&limit=1&executed=false`,
+      `${txServiceUrl}/api/v1/safes/${safeCs}/multisig-transactions/?ordering=-nonce&limit=1&executed=false`,
     ),
   ]);
 
@@ -79,7 +80,7 @@ async function getNextNonce(
  * Compute the Safe EIP-712 hash, sign it, and POST to the Safe Transaction
  * Service. Returns the safe tx hash.
  */
-async function proposeSingleTx(
+export async function proposeSingleTx(
   txServiceUrl: string,
   chainId: number,
   safeAddress: string,
@@ -90,13 +91,18 @@ async function proposeSingleTx(
   data: string,
   nonce: number,
 ): Promise<string> {
+  // Checksum all addresses — Safe TX Service rejects non-checksummed values
+  const toCs = getAddress(to);
+  const safeCs = getAddress(safeAddress);
+  const signerCs = getAddress(signerAddress);
+
   // ── 1. Compute the EIP-712 hash with viem (handles BigInt correctly) ───
   const safeTxHash = hashTypedData({
-    domain: { chainId, verifyingContract: safeAddress as Hex },
+    domain: { chainId, verifyingContract: safeCs as Hex },
     types: SAFE_TX_TYPES,
     primaryType: "SafeTx",
     message: {
-      to: to as Hex,
+      to: toCs as Hex,
       value: BigInt(0),
       data: data as Hex,
       operation: 0,
@@ -118,10 +124,10 @@ async function proposeSingleTx(
       ],
       SafeTx: SAFE_TX_TYPES.SafeTx,
     },
-    domain: { chainId, verifyingContract: safeAddress },
+    domain: { chainId, verifyingContract: safeCs },
     primaryType: "SafeTx",
     message: {
-      to,
+      to: toCs,
       value: "0",
       data,
       operation: 0,
@@ -136,17 +142,17 @@ async function proposeSingleTx(
 
   const signature: string = await provider.request({
     method: "eth_signTypedData_v4",
-    params: [signerAddress, JSON.stringify(typedDataPayload)],
+    params: [signerCs, JSON.stringify(typedDataPayload)],
   });
 
   // ── 3. Submit to Safe Transaction Service ──────────────────────────────
   const res = await fetch(
-    `${txServiceUrl}/api/v1/safes/${safeAddress}/multisig-transactions/`,
+    `${txServiceUrl}/api/v1/safes/${safeCs}/multisig-transactions/`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        to,
+        to: toCs,
         value: "0",
         data,
         operation: 0,
@@ -157,7 +163,7 @@ async function proposeSingleTx(
         refundReceiver: ZERO_ADDR,
         nonce,
         contractTransactionHash: safeTxHash,
-        sender: signerAddress,
+        sender: signerCs,
         signature,
       }),
     },
