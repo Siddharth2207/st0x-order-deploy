@@ -78,7 +78,7 @@ export const GET: RequestHandler = async () => {
 /** Sign and broadcast a batch of transactions sequentially, return the last tx hash */
 export const POST: RequestHandler = async ({ request }) => {
   const body = (await request.json()) as {
-    transactions: Array<{ to: string; data: string }>;
+    transactions: Array<{ to: string; data: string; gas?: number }>;
     chainId: number;
   };
 
@@ -95,15 +95,50 @@ export const POST: RequestHandler = async ({ request }) => {
     const publicClient = createPublicClient({ chain, transport: http() });
 
     let lastHash = "";
+    let nonce = await publicClient.getTransactionCount({
+      address: account.address,
+      blockTag: "pending",
+    });
+
     for (const tx of body.transactions) {
-      const hash = await walletClient.sendTransaction({
+      // If the caller provides an explicit gas limit, skip estimateGas entirely.
+      // This is required for deposit4 which follows an approve in the same flow:
+      // estimateGas would simulate against a node that may not have propagated
+      // the approval state yet, causing a spurious "exceeds allowance" revert.
+      const gas = tx.gas
+        ? BigInt(tx.gas)
+        : await publicClient.estimateGas({
+            to: tx.to as Address,
+            data: tx.data as Hex,
+            account: account.address,
+          });
+
+      const fees = await publicClient.estimateFeesPerGas();
+
+      const request = await publicClient.prepareTransactionRequest({
         to: tx.to as Address,
         data: tx.data as Hex,
         chain,
-        account: account.address,
+        account,
+        nonce,
+        gas,
+        maxFeePerGas: fees.maxFeePerGas,
+        maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
       });
-      await publicClient.waitForTransactionReceipt({ hash: hash as Hex });
+
+      const signed = await walletClient.signTransaction({
+        ...request,
+        chain,
+        account,
+      });
+
+      const hash = await publicClient.sendRawTransaction({
+        serializedTransaction: signed,
+      });
+
+      await publicClient.waitForTransactionReceipt({ hash });
       lastHash = hash;
+      nonce += 1;
     }
 
     return json({ txHash: lastHash });

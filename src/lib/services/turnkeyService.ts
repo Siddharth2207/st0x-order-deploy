@@ -26,7 +26,7 @@ export async function connectTurnkeyWallet(): Promise<TurnkeyWallet> {
  * Returns the hash of the last transaction.
  */
 export async function sendViaTurnkey(
-  transactions: Array<{ to: string; data: string }>,
+  transactions: Array<{ to: string; data: string; gas?: number }>,
   chainId: number,
 ): Promise<string> {
   const res = await fetch("/api/turnkey", {

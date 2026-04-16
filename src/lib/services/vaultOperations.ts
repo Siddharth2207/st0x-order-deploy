@@ -397,9 +397,12 @@ export async function depositTurnkey(
   onStep?.("approved");
 
   // Step 2 — deposit4
+  // Pass an explicit gas limit to skip estimateGas simulation on the server.
+  // The simulation runs against the RPC node before the approve receipt has
+  // propagated, causing a spurious "exceeds allowance" revert.
   onStep?.("depositing");
   return sendViaTurnkey(
-    [{ to: input.orderbookAddress, data: depositData }],
+    [{ to: input.orderbookAddress, data: depositData, gas: 500_000 }],
     input.chainId,
   ) as Promise<Hex>;
 }
