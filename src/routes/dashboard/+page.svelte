@@ -359,7 +359,6 @@
 			<a href="/" class="text-gray-500 hover:text-gray-200 text-xs transition-colors shrink-0">← deploy</a>
 			<span class="text-gray-700 shrink-0">/</span>
 			<h1 class="text-sm font-semibold tracking-tight text-gray-100 truncate">orderbook dashboard</h1>
-			<a href="/export" class="shrink-0 text-xs px-2.5 py-1 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors">export →</a>
 		</div>
 
 		<!-- Wallet strip (right side of header) -->
