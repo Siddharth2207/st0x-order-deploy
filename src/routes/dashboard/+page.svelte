@@ -120,7 +120,7 @@
 	type VaultOpState = {
 		mode: 'none' | 'deposit' | 'withdraw';
 		amount: string;
-		status: 'idle' | 'approving' | 'approved' | 'depositing' | 'busy' | 'success' | 'error';
+		status: 'idle' | 'approving' | 'busy' | 'success' | 'error';
 		error: string;
 		result: string;
 		safeTxHash: string;
@@ -695,22 +695,16 @@
 																	<button
 																		type="button"
 																		on:click|stopPropagation={() => executeVaultOp(order, section.ioType, vault)}
-																		disabled={['approving','approved','depositing','busy'].includes(vs.status) || !isConnected}
-																		title={!isConnected ? (deploymentMode === 'turnkey' ? 'Connect Turnkey above' : 'Connect wallet') : undefined}
-																		class="text-xs px-3 py-1.5 rounded font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors {vs.mode === 'deposit' ? 'bg-blue-700 hover:bg-blue-600' : 'bg-purple-700 hover:bg-purple-600'}"
+																			disabled={['approving','busy'].includes(vs.status) || !isConnected}
+																			title={!isConnected ? (deploymentMode === 'turnkey' ? 'Connect Turnkey above' : 'Connect wallet') : undefined}
+																			class="text-xs px-3 py-1.5 rounded font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors {vs.mode === 'deposit' ? 'bg-blue-700 hover:bg-blue-600' : 'bg-purple-700 hover:bg-purple-600'}"
 																	>{
-																		vs.status === 'approving'  ? 'approving…'  :
-																		vs.status === 'approved'   ? 'approved ✓'  :
-																		vs.status === 'depositing' ? 'depositing…' :
-																		vs.status === 'busy'       ? (vs.mode === 'deposit' ? 'depositing…' : 'withdrawing…') :
-																		vs.mode
+																			vs.status === 'approving' ? 'approve + deposit…' :
+																			vs.status === 'busy'      ? (vs.mode === 'deposit' ? 'depositing…' : 'withdrawing…') :
+																			vs.mode
 																	}</button>
 																	{#if vs.status === 'approving'}
-																		<span class="text-xs text-yellow-400/80">1/2 · approve tx confirmed on-chain, waiting…</span>
-																	{:else if vs.status === 'approved'}
-																		<span class="text-xs text-green-400/80">✓ approve confirmed · sending deposit…</span>
-																	{:else if vs.status === 'depositing'}
-																		<span class="text-xs text-blue-400/80">2/2 · deposit tx confirmed on-chain, waiting…</span>
+																			<span class="text-xs text-yellow-400/80">approve → deposit · signing on-chain…</span>
 																	{:else if !isConnected}
 																		<span class="text-xs text-gray-600">{deploymentMode === 'turnkey' ? 'connect Turnkey above ↑' : 'connect wallet'}</span>
 																	{/if}

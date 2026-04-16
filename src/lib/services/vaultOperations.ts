@@ -378,7 +378,7 @@ export async function withdrawSafe(
 
 export async function depositTurnkey(
   input: VaultOpInput,
-  onStep?: (step: "approving" | "approved" | "depositing") => void,
+  onStep?: (step: "approving") => void,
 ): Promise<Hex> {
   const { approveData, depositData } = await buildDepositCalldata(
     input.tokenAddress,
@@ -388,21 +388,21 @@ export async function depositTurnkey(
     input.chainId,
   );
 
-  // Step 1 — ERC-20 approve
+  // Send approve + deposit4 as a single batch so the server manages the nonce
+  // in-memory. Two separate sendViaTurnkey calls each re-fetch getTransactionCount
+  // and the RPC node may still return the pre-approve nonce for the second call,
+  // causing "nonce too low". Within a batch the server increments nonce manually
+  // after each confirmed receipt.
+  //
+  // deposit4 gets an explicit gas limit so the server skips estimateGas
+  // simulation — the simulation would hit the RPC before the approve allowance
+  // has propagated and revert with "exceeds allowance".
   onStep?.("approving");
-  await sendViaTurnkey(
-    [{ to: input.tokenAddress, data: approveData }],
-    input.chainId,
-  );
-  onStep?.("approved");
-
-  // Step 2 — deposit4
-  // Pass an explicit gas limit to skip estimateGas simulation on the server.
-  // The simulation runs against the RPC node before the approve receipt has
-  // propagated, causing a spurious "exceeds allowance" revert.
-  onStep?.("depositing");
   return sendViaTurnkey(
-    [{ to: input.orderbookAddress, data: depositData, gas: 500_000 }],
+    [
+      { to: input.tokenAddress, data: approveData },
+      { to: input.orderbookAddress, data: depositData, gas: 500_000 },
+    ],
     input.chainId,
   ) as Promise<Hex>;
 }
