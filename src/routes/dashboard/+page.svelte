@@ -61,6 +61,22 @@
 	let showInactive = false;
 	let selectedPair = 'All';
 
+	// Auto-fill owner filter from connected wallet.
+	// Tracks the last address we auto-filled so manual edits are not overridden.
+	let _autoFilledAddress = '';
+	$: if (connectedAddress && connectedAddress !== _autoFilledAddress) {
+		// Only auto-fill if the filter is currently empty or holds the previous auto address
+		if (ownerFilter === '' || ownerFilter === _autoFilledAddress) {
+			_autoFilledAddress = connectedAddress;
+			ownerFilterInput = connectedAddress;
+			ownerFilter = connectedAddress;
+			// Re-fetch once the client is ready (onMount sets client before fetching)
+			if (client) fetchOrders(true);
+		} else {
+			_autoFilledAddress = connectedAddress; // track without overriding manual filter
+		}
+	}
+
 	// Debounced owner filter — fires 400 ms after the user stops typing
 	let _ownerDebounce: ReturnType<typeof setTimeout> | null = null;
 	function onOwnerInput(e: Event) {
@@ -96,33 +112,42 @@
 
 	// ── Remove order state ─────────────────────────────────────────────────────
 	type RemoveState = { status: 'idle' | 'busy' | 'success' | 'error'; error: string };
-	let removeStates = new Map<string, RemoveState>(); // orderHash → state
+	let removeStates: Record<string, RemoveState> = {};
 
 	// ── Vault op state per vault ───────────────────────────────────────────────
 	// key: `${orderHash}:${ioType}:${vaultId}`
+	// Plain object (not Map) so Svelte's reactivity tracks mutations correctly.
 	type VaultOpState = {
 		mode: 'none' | 'deposit' | 'withdraw';
 		amount: string;
-		status: 'idle' | 'busy' | 'success' | 'error';
+		status: 'idle' | 'approving' | 'busy' | 'success' | 'error';
 		error: string;
 		result: string;
 		safeTxHash: string;
 		safeAppUrl: string;
 	};
-	let vaultOpStates = new Map<string, VaultOpState>();
+	const EMPTY_VAULT_OP: VaultOpState = { mode: 'none', amount: '', status: 'idle', error: '', result: '', safeTxHash: '', safeAppUrl: '' };
+	let vaultOpStates: Record<string, VaultOpState> = {};
 
 	function vaultKey(orderHash: string, ioType: 'input' | 'output', vault: RaindexVault) {
 		return `${orderHash}:${ioType}:${vault.vaultId}`;
 	}
 	function getVaultOp(key: string): VaultOpState {
-		if (!vaultOpStates.has(key)) {
-			vaultOpStates.set(key, { mode: 'none', amount: '', status: 'idle', error: '', result: '', safeTxHash: '', safeAppUrl: '' });
-		}
-		return vaultOpStates.get(key)!;
+		return vaultOpStates[key] ?? EMPTY_VAULT_OP;
 	}
 	function setVaultOp(key: string, patch: Partial<VaultOpState>) {
-		vaultOpStates.set(key, { ...getVaultOp(key), ...patch });
-		vaultOpStates = vaultOpStates;
+		// Object spread + reassign triggers Svelte reactivity reliably
+		vaultOpStates = { ...vaultOpStates, [key]: { ...getVaultOp(key), ...patch } };
+	}
+	function toggleVaultMode(key: string, currentMode: VaultOpState['mode'], nextMode: 'deposit' | 'withdraw') {
+		setVaultOp(key, {
+			mode: currentMode === nextMode ? 'none' : nextMode,
+			status: 'idle',
+			error: '',
+			result: '',
+			safeTxHash: '',
+			safeAppUrl: ''
+		});
 	}
 
 	// ── Mount ──────────────────────────────────────────────────────────────────
@@ -242,6 +267,9 @@
 	// ── Helpers ────────────────────────────────────────────────────────────────
 	function fmtAddress(addr: string) { return addr.slice(0, 6) + '…' + addr.slice(-4); }
 	function fmtTimestamp(ts: bigint) { return new Date(Number(ts) * 1000).toLocaleString(); }
+	function getRaindexOrderUrl(order: RaindexOrder) {
+		return `https://v6.raindex.finance/orders/${order.chainId}-${order.orderbook}-${order.orderHash}`;
+	}
 
 	function vaultIdToBytes32(id: bigint): string {
 		return '0x' + id.toString(16).padStart(64, '0');
@@ -258,8 +286,7 @@
 	// ── Remove order ───────────────────────────────────────────────────────────
 	async function removeOrder(order: RaindexOrder) {
 		const key = order.orderHash;
-		removeStates.set(key, { status: 'busy', error: '' });
-		removeStates = removeStates;
+		removeStates = { ...removeStates, [key]: { status: 'busy', error: '' } };
 		try {
 			const r = order.getRemoveCalldata();
 			if (r.error) throw new Error(r.error.readableMsg);
@@ -288,12 +315,11 @@
 				await sendViaTurnkey([{ to: order.orderbook, data: calldata }], order.chainId);
 			}
 
-			removeStates.set(key, { status: 'success', error: '' });
+			removeStates = { ...removeStates, [key]: { status: 'success', error: '' } };
 			// Refresh so removed order disappears
 			await fetchOrders();
 		} catch (e) {
-			removeStates.set(key, { status: 'error', error: e instanceof Error ? e.message : String(e) });
-			removeStates = removeStates;
+			removeStates = { ...removeStates, [key]: { status: 'error', error: e instanceof Error ? e.message : String(e) } };
 		}
 	}
 
@@ -326,7 +352,9 @@
 					setVaultOp(key, { status: 'success', safeTxHash: r.safeTxHash, safeAppUrl: r.safeAppUrl });
 				} else {
 					if (!turnkeyWallet) throw new Error('Turnkey wallet not connected');
-					const txHash = await depositTurnkey(input);
+					const txHash = await depositTurnkey(input, (step) => {
+						setVaultOp(key, { status: step });
+					});
 					setVaultOp(key, { status: 'success', result: txHash });
 				}
 			} else {
@@ -345,6 +373,10 @@
 					setVaultOp(key, { status: 'success', result: txHash });
 				}
 			}
+
+			// Refresh balances after a successful vault operation so the UI reflects
+			// the updated onchain vault state.
+			await fetchOrders();
 		} catch (e) {
 			setVaultOp(key, { status: 'error', error: e instanceof Error ? e.message : String(e) });
 		}
@@ -359,7 +391,6 @@
 			<a href="/" class="text-gray-500 hover:text-gray-200 text-xs transition-colors shrink-0">← deploy</a>
 			<span class="text-gray-700 shrink-0">/</span>
 			<h1 class="text-sm font-semibold tracking-tight text-gray-100 truncate">orderbook dashboard</h1>
-			<a href="/export" class="shrink-0 text-xs px-2.5 py-1 rounded border border-gray-700 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors">export →</a>
 		</div>
 
 		<!-- Wallet strip (right side of header) -->
@@ -534,7 +565,7 @@
 
 					{#each orders as order (order.orderHash)}
 						{@const isExpanded = expandedOrders.has(order.orderHash)}
-						{@const removeState = removeStates.get(order.orderHash) ?? { status: 'idle', error: '' }}
+						{@const removeState = removeStates[order.orderHash] ?? { status: 'idle', error: '' }}
 						<div class="border-b border-gray-800 last:border-0 {!order.active ? 'opacity-50' : ''}">
 
 							<!-- ── Dense order row ──────────────────────────────────────── -->
@@ -565,7 +596,14 @@
 
 								<!-- Hash (col 4) -->
 								<div class="py-3 pr-3 min-w-0">
-									<span class="font-mono text-xs text-gray-500 block truncate" title={order.orderHash}>{fmtAddress(order.orderHash)}</span>
+									<a
+										href={getRaindexOrderUrl(order)}
+										target="_blank"
+										rel="noreferrer"
+										class="font-mono text-xs text-blue-400 hover:text-blue-300 underline-offset-2 hover:underline block truncate"
+										title={order.orderHash}
+										on:click|stopPropagation
+									>{fmtAddress(order.orderHash)}</a>
 								</div>
 
 								<!-- Owner (col 5 — flex-1, truncates) -->
@@ -613,7 +651,7 @@
 												<div class="space-y-1.5">
 													{#each section.items as vault}
 														{@const vk = vaultKey(order.orderHash, section.ioType, vault)}
-														{@const vs = getVaultOp(vk)}
+														{#each [vaultOpStates[vk] ?? EMPTY_VAULT_OP] as vs}
 														<div class="bg-gray-950/80 rounded-lg border border-gray-800/60 px-3 py-2.5">
 															<div class="flex flex-wrap items-center gap-3">
 																<!-- Token symbol + balance -->
@@ -629,35 +667,47 @@
 																<!-- Token address -->
 																<span class="text-xs text-gray-700 font-mono hidden md:block" title={vault.token.address}>{fmtAddress(vault.token.address)}</span>
 
-																<!-- Action buttons -->
-																{#if isConnected}
-																	<div class="ml-auto flex gap-1.5">
-																		<button
-																			on:click={() => setVaultOp(vk, { mode: vs.mode === 'deposit' ? 'none' : 'deposit', status: 'idle', error: '', result: '' })}
-																			class="text-xs px-2.5 py-1 rounded border transition-colors {vs.mode === 'deposit' ? 'bg-blue-800 border-blue-700 text-blue-100' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
-																		>deposit</button>
-																		<button
-																			on:click={() => setVaultOp(vk, { mode: vs.mode === 'withdraw' ? 'none' : 'withdraw', status: 'idle', error: '', result: '' })}
-																			class="text-xs px-2.5 py-1 rounded border transition-colors {vs.mode === 'withdraw' ? 'bg-purple-800 border-purple-700 text-purple-100' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
-																		>withdraw</button>
-																	</div>
-																{/if}
+																<!-- Action buttons — always visible -->
+																<div class="ml-auto flex gap-1.5">
+																	<button
+																		type="button"
+																		on:click|stopPropagation={() => toggleVaultMode(vk, vs.mode, 'deposit')}
+																		class="text-xs px-2.5 py-1 rounded border transition-colors {vs.mode === 'deposit' ? 'bg-blue-800 border-blue-700 text-blue-100' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
+																	>deposit</button>
+																	<button
+																		type="button"
+																		on:click|stopPropagation={() => toggleVaultMode(vk, vs.mode, 'withdraw')}
+																		class="text-xs px-2.5 py-1 rounded border transition-colors {vs.mode === 'withdraw' ? 'bg-purple-800 border-purple-700 text-purple-100' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
+																	>withdraw</button>
+																</div>
 															</div>
 
-															<!-- Inline amount form -->
-															{#if vs.mode !== 'none' && isConnected}
+															<!-- Inline amount form — shown when a mode is selected -->
+															{#if vs.mode !== 'none'}
 																<div class="mt-2.5 pt-2.5 border-t border-gray-800/60 flex flex-wrap items-center gap-2">
 																	<input
 																		value={vs.amount}
+																		on:click|stopPropagation
 																		on:input={(e) => setVaultOp(vk, { amount: e.currentTarget.value })}
 																		placeholder={vs.mode === 'withdraw' ? 'amount (blank = all)' : 'amount'}
 																		class="text-xs px-2.5 py-1.5 rounded bg-gray-900 border border-gray-700 text-gray-100 w-40 focus:outline-none focus:border-blue-500 font-mono"
 																	/>
 																	<button
-																		on:click={() => executeVaultOp(order, section.ioType, vault)}
-																		disabled={vs.status === 'busy'}
-																		class="text-xs px-3 py-1.5 rounded font-semibold disabled:opacity-50 transition-colors {vs.mode === 'deposit' ? 'bg-blue-700 hover:bg-blue-600' : 'bg-purple-700 hover:bg-purple-600'}"
-																	>{vs.status === 'busy' ? (vs.mode === 'deposit' ? 'depositing…' : 'withdrawing…') : vs.mode}</button>
+																		type="button"
+																		on:click|stopPropagation={() => executeVaultOp(order, section.ioType, vault)}
+																			disabled={['approving','busy'].includes(vs.status) || !isConnected}
+																			title={!isConnected ? (deploymentMode === 'turnkey' ? 'Connect Turnkey above' : 'Connect wallet') : undefined}
+																			class="text-xs px-3 py-1.5 rounded font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors {vs.mode === 'deposit' ? 'bg-blue-700 hover:bg-blue-600' : 'bg-purple-700 hover:bg-purple-600'}"
+																	>{
+																			vs.status === 'approving' ? 'approve + deposit…' :
+																			vs.status === 'busy'      ? (vs.mode === 'deposit' ? 'depositing…' : 'withdrawing…') :
+																			vs.mode
+																	}</button>
+																	{#if vs.status === 'approving'}
+																			<span class="text-xs text-yellow-400/80">approve → deposit · signing on-chain…</span>
+																	{:else if !isConnected}
+																		<span class="text-xs text-gray-600">{deploymentMode === 'turnkey' ? 'connect Turnkey above ↑' : 'connect wallet'}</span>
+																	{/if}
 																	{#if vs.status === 'success'}
 																		<span class="text-xs text-green-400">
 																			{#if vs.result}✓ <span class="font-mono">{vs.result.slice(0,10)}…</span>
@@ -671,6 +721,7 @@
 																</div>
 															{/if}
 														</div>
+														{/each}
 													{/each}
 												</div>
 											</div>
@@ -681,7 +732,12 @@
 									<div class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 pt-1">
 										<div>
 											<div class="text-xs text-gray-700 mb-0.5">hash</div>
-											<div class="font-mono text-xs text-gray-400 break-all">{order.orderHash}</div>
+											<a
+												href={getRaindexOrderUrl(order)}
+												target="_blank"
+												rel="noreferrer"
+												class="font-mono text-xs text-blue-400 hover:text-blue-300 underline-offset-2 hover:underline break-all"
+											>{order.orderHash}</a>
 										</div>
 										<div>
 											<div class="text-xs text-gray-700 mb-0.5">owner</div>
