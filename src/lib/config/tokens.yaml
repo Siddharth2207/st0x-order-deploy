@@ -2,7 +2,7 @@
 #
 # registryCommit: the rain.strategies git commit to resolve strategy files from.
 # Bump this to pick up new strategy versions.
-registryCommit: "9dd64902161158395d588335f0a02e3a6d52f772"
+registryCommit: "32d698b4dcc18011633c7fceea41a19069944c64"
 # ---------------------------------------------------------------------------
 # YAML anchors (reused below — the _anchors key is ignored by the app)
 # ---------------------------------------------------------------------------
@@ -20,11 +20,13 @@ _anchors:
   wt_crcl: &wt_crcl "0x8AFba81DEc38DE0A18E2Df5E1967a7493651eebf"
   wt_bmnr: &wt_bmnr "0x2512EC661f0bA089c275EA105E31bAD6FcFcf319"
   wt_pplt: &wt_pplt "0x82f5BAEE1076334357a34A19E04f7c282D51cE47"
+  wt_sgov: &wt_sgov "0x78c31580c97101694c70022c83d570150c11e935"
+  wt_rklb: &wt_rklb "0xf4f8c66085910d583c01f3b4e44bf731d4e2c565"
   # ── Vault IDs (Rain "word IDs") ───────────────────────────────────────────
   # One vault ID per token — shared across buy/sell pairs so deposited tokens
   # flow directly between orders without manual transfers.
   # Values are arbitrary bytes32; sequential integers are easy to manage.
-  vault_usdc: &vault_usdc "0x000000000000000000000000000000000000000000000000000000000000fab2"
+  vault_usdc: &vault_usdc "0x000000000000000000000000000000000000000000000000000000000000fab4"
   vault_mstr: &vault_mstr "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_tsla: &vault_tsla "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_nvda: &vault_nvda "0x0000000000000000000000000000000000000000000000000000000000000fab"
@@ -36,6 +38,8 @@ _anchors:
   vault_crcl: &vault_crcl "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_bmnr: &vault_bmnr "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_pplt: &vault_pplt "0x0000000000000000000000000000000000000000000000000000000000000fab"
+  vault_sgov: &vault_sgov "0x0000000000000000000000000000000000000000000000000000000000000fab4  "
+  vault_rklb: &vault_rklb "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_goog: &vault_goog "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_aapl: &vault_aapl "0x0000000000000000000000000000000000000000000000000000000000000fab"
   # ── Pyth price feed IDs (Equity.US.X/USD) ────────────────────────────────
@@ -64,6 +68,8 @@ _anchors:
   feed_bmnr_pre: &feed_bmnr_pre "0x964571756974792e55532e424d4e522f5553442e505245000000000000000000"
   feed_bmnr_post: &feed_bmnr_post "0x974571756974792e55532e424d4e522f5553442e504f53540000000000000000"
   feed_pplt: &feed_pplt "0x924571756974792e55532e50504c542f55534400000000000000000000000000"
+  feed_sgov: &feed_sgov "0x924571756974792e55532e53474f562f55534400000000000000000000000000"
+  feed_rklb: &feed_rklb "0x924571756974792e55532e524b4c422f55534400000000000000000000000000"
 # ---------------------------------------------------------------------------
 # Strategy definitions
 #
@@ -1150,5 +1156,155 @@ strategies:
         vaultIds:
           output:
             output: *vault_pplt
+          input:
+            input: *vault_usdc
+  # ── wtSGOV / USDC ─────────────────────────────────────────────────────────
+  - name: "wtSGOV/USDC"
+    orders:
+      - label: "Buy wtSGOV"
+        description: "spend USDC → receive wtSGOV at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_sgov
+        fieldValues:
+          pyth-pair: *feed_sgov
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_sgov
+      - label: "Sell wtSGOV"
+        description: "sell wtSGOV → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_sgov
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_sgov
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_sgov
+          input:
+            input: *vault_usdc
+      - label: "Buy wtSGOV (Post-Market)"
+        description: "spend USDC → receive wtSGOV at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_sgov
+        fieldValues:
+          pyth-pair: *feed_sgov
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_sgov
+      - label: "Sell wtSGOV (Post-Market)"
+        description: "sell wtSGOV → receive USDC at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_sgov
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_sgov
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_sgov
+          input:
+            input: *vault_usdc
+  # ── wtRKLB / USDC ─────────────────────────────────────────────────────────
+  - name: "wtRKLB/USDC"
+    orders:
+      - label: "Buy wtRKLB"
+        description: "spend USDC → receive wtRKLB at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_rklb
+        fieldValues:
+          pyth-pair: *feed_rklb
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_rklb
+      - label: "Sell wtRKLB"
+        description: "sell wtRKLB → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_rklb
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_rklb
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_rklb
+          input:
+            input: *vault_usdc
+      - label: "Buy wtRKLB (Post-Market)"
+        description: "spend USDC → receive wtRKLB at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_rklb
+        fieldValues:
+          pyth-pair: *feed_rklb
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_rklb
+      - label: "Sell wtRKLB (Post-Market)"
+        description: "sell wtRKLB → receive USDC at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_rklb
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_rklb
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_rklb
           input:
             input: *vault_usdc
