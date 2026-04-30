@@ -13,18 +13,25 @@ import { DotrainOrderGui } from "@rainlanguage/orderbook";
 import type { DeploymentTransactionArgs } from "@rainlanguage/orderbook";
 import type { OrderConfig } from "$lib/config/strategies";
 import { REGISTRY_COMMIT } from "$lib/config/strategies";
+import type { LoadedRegistry } from "$lib/services/registryLoader";
 
-const BASE_URL = `https://raw.githubusercontent.com/rainlanguage/rain.strategies/${REGISTRY_COMMIT}`;
+const REGISTRY_URL = `https://raw.githubusercontent.com/ST0x-Technology/st0x-oracle-server/${REGISTRY_COMMIT}/strategy/registry`;
+const REGISTRY_FALLBACK_URL =
+  "https://raw.githubusercontent.com/ST0x-Technology/st0x-oracle-server/main/strategy/registry";
 
 // Cache raw text fetches so each file is only downloaded once per session
 const fetchCache = new Map<string, Promise<string>>();
+let registryCache: Promise<{
+  settingsUrl: string;
+  strategyUrls: Map<string, string>;
+}> | null = null;
 
 function fetchText(url: string): Promise<string> {
   if (!fetchCache.has(url)) {
     fetchCache.set(
       url,
       fetch(url).then((r) => {
-        if (!r.ok) throw new Error(`Failed to fetch ${url}: ${r.statusText}`);
+        if (!r.ok) throw new Error(`Failed to fetch ${url}: HTTP ${r.status}`);
         return r.text();
       }),
     );
@@ -32,17 +39,94 @@ function fetchText(url: string): Promise<string> {
   return fetchCache.get(url)!;
 }
 
+async function fetchTextWithFallback(
+  primaryUrl: string,
+  fallbackUrl: string,
+): Promise<string> {
+  try {
+    return await fetchText(primaryUrl);
+  } catch (primaryError) {
+    try {
+      return await fetchText(fallbackUrl);
+    } catch {
+      throw primaryError;
+    }
+  }
+}
+
+async function getRegistryConfig(): Promise<{
+  settingsUrl: string;
+  strategyUrls: Map<string, string>;
+}> {
+  if (!registryCache) {
+    registryCache = (async () => {
+      const registryText = await fetchTextWithFallback(
+        REGISTRY_URL,
+        REGISTRY_FALLBACK_URL,
+      );
+      const lines = registryText
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (lines.length === 0) throw new Error("Registry file is empty");
+
+      const settingsUrl = lines[0];
+      if (!settingsUrl.startsWith("http")) {
+        throw new Error(`Invalid settings URL in registry: ${settingsUrl}`);
+      }
+
+      const strategyUrls = new Map<string, string>();
+      for (const line of lines.slice(1)) {
+        const [strategyType, url] = line.split(/\s+/);
+        if (!strategyType || !url || !url.startsWith("http")) continue;
+        strategyUrls.set(strategyType, url);
+      }
+      return { settingsUrl, strategyUrls };
+    })();
+  }
+  return registryCache;
+}
+
 /**
  * Fetch the .rain file for a strategy type and the shared settings.yaml,
  * then instantiate a DotrainOrderGui for the given deployment key.
+ *
+ * When a dynamic registry is provided it takes precedence over the static
+ * GitHub commit URL, allowing runtime strategy source selection.
  */
 async function buildGui(
   strategyType: string,
   deploymentKey: string,
+  registry?: LoadedRegistry,
 ): Promise<DotrainOrderGui> {
+  let strategyUrl: string;
+  let settingsUrl: string;
+
+  if (registry) {
+    const entry = registry.entries.find((e) => e.strategyType === strategyType);
+    if (!entry) {
+      const available = registry.entries.map((e) => e.strategyType).join(", ");
+      throw new Error(
+        `Strategy "${strategyType}" not found in loaded registry. Available: ${available || "(none)"}`,
+      );
+    }
+    strategyUrl = entry.url;
+    settingsUrl = registry.settingsUrl;
+  } else {
+    const staticReg = await getRegistryConfig();
+    const url = staticReg.strategyUrls.get(strategyType);
+    if (!url) {
+      throw new Error(
+        `Strategy "${strategyType}" not found in registry ${REGISTRY_URL}`,
+      );
+    }
+    strategyUrl = url;
+    settingsUrl = staticReg.settingsUrl;
+  }
+
   const [dotrain, settings] = await Promise.all([
-    fetchText(`${BASE_URL}/src/${strategyType}.rain`),
-    fetchText(`${BASE_URL}/settings.yaml`),
+    fetchText(strategyUrl),
+    fetchText(settingsUrl),
   ]);
 
   const result = await DotrainOrderGui.newWithDeployment(
@@ -65,12 +149,16 @@ export interface DeploymentResult {
 /**
  * Build deployment args for a single order.
  * Fully strategy-agnostic — driven entirely by the OrderConfig.
+ *
+ * Pass a LoadedRegistry to override the static GitHub commit URL with a
+ * dynamically selected registry source.
  */
 export async function buildOrderDeployment(
   order: OrderConfig,
   ownerAddress: string,
+  registry?: LoadedRegistry,
 ): Promise<DeploymentResult> {
-  const gui = await buildGui(order.strategyType, order.deploymentKey);
+  const gui = await buildGui(order.strategyType, order.deploymentKey, registry);
 
   for (const [key, address] of Object.entries(order.selectTokens)) {
     await gui.setSelectToken(key, address);

@@ -2,7 +2,7 @@
 #
 # registryCommit: the rain.strategies git commit to resolve strategy files from.
 # Bump this to pick up new strategy versions.
-registryCommit: "32d698b4dcc18011633c7fceea41a19069944c64"
+registryCommit: "453b94f83bbdddbcf6ed2df882cf0417e01855fb"
 # ---------------------------------------------------------------------------
 # YAML anchors (reused below — the _anchors key is ignored by the app)
 # ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ _anchors:
   vault_crcl: &vault_crcl "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_bmnr: &vault_bmnr "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_pplt: &vault_pplt "0x0000000000000000000000000000000000000000000000000000000000000fab"
-  vault_sgov: &vault_sgov "0x0000000000000000000000000000000000000000000000000000000000000fab4  "
+  vault_sgov: &vault_sgov "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_rklb: &vault_rklb "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_goog: &vault_goog "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_aapl: &vault_aapl "0x0000000000000000000000000000000000000000000000000000000000000fab"
@@ -81,6 +81,85 @@ _anchors:
 # deposits:      { guiTokenKey: "humanAmount" } — "0" entries are skipped
 # ---------------------------------------------------------------------------
 strategies:
+  # ── st0x fixed spread (oracle server) ─────────────────────────────────────
+  - name: "st0x-fixed-spread"
+    orders:
+      - label: "Buy wtSPYM (5m)"
+        description: "spend USDC → receive wtSPYM (max-staleness 300, multiplier 1.0002)"
+        strategyType: "st0x-fixed-spread"
+        deploymentKey: "base-st0x"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_spym
+        fieldValues:
+          baseline-multiplier: "1.0002"
+          min-price: "0.01"
+          max-price: "100000"
+          max-staleness: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_spym
+      - label: "Sell wtSPYM (5m)"
+        description: "sell wtSPYM → receive USDC (max-staleness 300, multiplier 1.0002)"
+        strategyType: "st0x-fixed-spread"
+        deploymentKey: "base-st0x"
+        selectTokens:
+          output: *wt_spym
+          input: *base_usdc
+        fieldValues:
+          baseline-multiplier: "1.0002"
+          min-price: "0.01"
+          max-price: "100000"
+          max-staleness: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_spym
+          input:
+            input: *vault_usdc
+      - label: "Buy wtSPYM (16h)"
+        description: "spend USDC → receive wtSPYM (max-staleness 57600, multiplier 1.0005)"
+        strategyType: "st0x-fixed-spread"
+        deploymentKey: "base-st0x"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_spym
+        fieldValues:
+          baseline-multiplier: "1.0005"
+          min-price: "0.01"
+          max-price: "100000"
+          max-staleness: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_spym
+      - label: "Sell wtSPYM (16h)"
+        description: "sell wtSPYM → receive USDC (max-staleness 57600, multiplier 1.0005)"
+        strategyType: "st0x-fixed-spread"
+        deploymentKey: "base-st0x"
+        selectTokens:
+          output: *wt_spym
+          input: *base_usdc
+        fieldValues:
+          baseline-multiplier: "1.0005"
+          min-price: "0.01"
+          max-price: "100000"
+          max-staleness: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_spym
+          input:
+            input: *vault_usdc
   # ── wtMSTR / USDC ─────────────────────────────────────────────────────────
   - name: "wtMSTR/USDC"
     orders:
@@ -93,7 +172,7 @@ strategies:
           input: *wt_mstr
         fieldValues:
           pyth-pair: *feed_mstr
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -111,7 +190,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_mstr
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -129,7 +208,7 @@ strategies:
           input: *wt_mstr
         fieldValues:
           pyth-pair: *feed_mstr_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -147,7 +226,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_mstr_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -165,7 +244,7 @@ strategies:
           input: *wt_mstr
         fieldValues:
           pyth-pair: *feed_mstr_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -183,7 +262,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_mstr_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -204,7 +283,7 @@ strategies:
           input: *wt_tsla
         fieldValues:
           pyth-pair: *feed_tsla
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -222,7 +301,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_tsla
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -240,7 +319,7 @@ strategies:
           input: *wt_tsla
         fieldValues:
           pyth-pair: *feed_tsla_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -258,7 +337,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_tsla_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -276,7 +355,7 @@ strategies:
           input: *wt_tsla
         fieldValues:
           pyth-pair: *feed_tsla_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -294,8 +373,8 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_tsla_post
-          baseline-multiplier: "1.001"
-          oracle-price-timeout: "300"
+          baseline-multiplier: "1.0025"
+          oracle-price-timeout: "28800"
         deposits:
           output: "0"
         vaultIds:
@@ -315,7 +394,7 @@ strategies:
           input: *wt_nvda
         fieldValues:
           pyth-pair: *feed_nvda
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -333,7 +412,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_nvda
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -351,7 +430,7 @@ strategies:
           input: *wt_nvda
         fieldValues:
           pyth-pair: *feed_nvda_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -369,7 +448,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_nvda_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -387,7 +466,7 @@ strategies:
           input: *wt_nvda
         fieldValues:
           pyth-pair: *feed_nvda_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -405,7 +484,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_nvda_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -426,7 +505,7 @@ strategies:
           input: *wt_amzn
         fieldValues:
           pyth-pair: *feed_amzn
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -444,7 +523,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_amzn
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -462,7 +541,7 @@ strategies:
           input: *wt_amzn
         fieldValues:
           pyth-pair: *feed_amzn_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -480,7 +559,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_amzn_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -498,7 +577,7 @@ strategies:
           input: *wt_amzn
         fieldValues:
           pyth-pair: *feed_amzn_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -516,7 +595,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_amzn_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -537,7 +616,7 @@ strategies:
           input: *wt_spym
         fieldValues:
           pyth-pair: *feed_splg
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -555,7 +634,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_splg
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0002"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -573,7 +652,7 @@ strategies:
           input: *wt_spym
         fieldValues:
           pyth-pair: *feed_splg
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0005"
           oracle-price-timeout: "57600"
         deposits:
           output: "0"
@@ -591,7 +670,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_splg
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0005"
           oracle-price-timeout: "57600"
         deposits:
           output: "0"
@@ -648,7 +727,7 @@ strategies:
           input: *wt_iau
         fieldValues:
           pyth-pair: *feed_iau
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "57600"
         deposits:
           output: "0"
@@ -666,7 +745,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_iau
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "57600"
         deposits:
           output: "0"
@@ -723,7 +802,7 @@ strategies:
           input: *wt_sivr
         fieldValues:
           pyth-pair: *feed_sivr
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "57600"
         deposits:
           output: "0"
@@ -741,7 +820,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_sivr
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "57600"
         deposits:
           output: "0"
@@ -798,7 +877,7 @@ strategies:
           input: *wt_coin
         fieldValues:
           pyth-pair: *feed_coin_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -816,7 +895,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_coin_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -834,7 +913,7 @@ strategies:
           input: *wt_coin
         fieldValues:
           pyth-pair: *feed_coin_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -852,7 +931,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_coin_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -909,7 +988,7 @@ strategies:
           input: *wt_crcl
         fieldValues:
           pyth-pair: *feed_crcl_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -927,7 +1006,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_crcl_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -945,7 +1024,7 @@ strategies:
           input: *wt_crcl
         fieldValues:
           pyth-pair: *feed_crcl_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -963,7 +1042,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_crcl_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -1020,7 +1099,7 @@ strategies:
           input: *wt_bmnr
         fieldValues:
           pyth-pair: *feed_bmnr_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -1038,7 +1117,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_bmnr_pre
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "300"
         deposits:
           output: "0"
@@ -1056,7 +1135,7 @@ strategies:
           input: *wt_bmnr
         fieldValues:
           pyth-pair: *feed_bmnr_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -1074,7 +1153,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_bmnr_post
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "28800"
         deposits:
           output: "0"
@@ -1131,7 +1210,7 @@ strategies:
           input: *wt_pplt
         fieldValues:
           pyth-pair: *feed_pplt
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "57600"
         deposits:
           output: "0"
@@ -1149,7 +1228,7 @@ strategies:
           input: *base_usdc
         fieldValues:
           pyth-pair: *feed_pplt
-          baseline-multiplier: "1.001"
+          baseline-multiplier: "1.0025"
           oracle-price-timeout: "57600"
         deposits:
           output: "0"

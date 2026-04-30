@@ -5,7 +5,9 @@
 import { RaindexClient } from "@rainlanguage/orderbook";
 import { REGISTRY_COMMIT } from "$lib/config/strategies";
 
-const REGISTRY_URL = `https://raw.githubusercontent.com/rainlanguage/rain.strategies/${REGISTRY_COMMIT}/registry`;
+const REGISTRY_URL = `https://raw.githubusercontent.com/ST0x-Technology/st0x-oracle-server/${REGISTRY_COMMIT}/strategy/registry`;
+const REGISTRY_FALLBACK_URL =
+  "https://raw.githubusercontent.com/ST0x-Technology/st0x-oracle-server/main/strategy/registry";
 
 let _client: RaindexClient | null = null;
 
@@ -28,9 +30,12 @@ export async function getOrderbookClient(): Promise<RaindexClient> {
   if (_client) return _client;
 
   // 1. Fetch the registry manifest to get the settings.yaml URL
-  const registryResp = await fetch(REGISTRY_URL);
+  let registryResp = await fetch(REGISTRY_URL);
   if (!registryResp.ok) {
-    throw new Error(`Failed to fetch registry: ${registryResp.statusText}`);
+    registryResp = await fetch(REGISTRY_FALLBACK_URL);
+  }
+  if (!registryResp.ok) {
+    throw new Error(`Failed to fetch registry: HTTP ${registryResp.status}`);
   }
   const registryText = await registryResp.text();
   // First non-empty line of the registry file is the settings URL

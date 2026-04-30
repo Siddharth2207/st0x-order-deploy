@@ -17,6 +17,7 @@
 	import { connectTurnkeyWallet, sendViaTurnkey, type TurnkeyWallet } from '$lib/services/turnkeyService';
 	import { depositEoa, withdrawEoa, depositSafe, withdrawSafe, depositTurnkey, withdrawTurnkey, type VaultOpInput } from '$lib/services/vaultOperations';
 	import type { Hex } from 'viem';
+	import { registrySourceInput, loadedRegistry, hydrateFromStorage } from '$lib/stores/registrySource';
 
 
 	const PAGE_SIZE = 25;
@@ -152,6 +153,9 @@
 
 	// ── Mount ──────────────────────────────────────────────────────────────────
 	onMount(async () => {
+		// Restore registry source from localStorage so the indicator is accurate
+		// even when navigating directly to the dashboard.
+		hydrateFromStorage();
 		try {
 			client = await getOrderbookClient();
 			await fetchOrders();
@@ -457,6 +461,27 @@
 			</div>
 		{:else if !initError}
 
+			<!-- ── Active registry source indicator ──────────────────────────────── -->
+			{#if $loadedRegistry}
+				<div class="mb-4 flex items-center gap-2 text-xs bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2">
+					<span class="text-gray-600 shrink-0">registry:</span>
+					<span class="font-mono text-gray-400 truncate">
+						{$loadedRegistry.source.owner}/{$loadedRegistry.source.repo}@{$loadedRegistry.source.ref.slice(0, 12)}/{$loadedRegistry.source.path}
+					</span>
+					<span class="text-green-600/70 shrink-0">✓ active</span>
+					<a href="/" class="ml-auto text-blue-600/70 hover:text-blue-400 transition-colors shrink-0">change →</a>
+				</div>
+			{:else}
+				<div class="mb-4 flex items-center gap-2 text-xs bg-gray-900/30 border border-gray-800/60 rounded-lg px-3 py-2">
+					<span class="text-gray-700 shrink-0">registry:</span>
+					<span class="font-mono text-gray-600 truncate">
+						{$registrySourceInput.owner}/{$registrySourceInput.repo}@{$registrySourceInput.ref.slice(0, 12)}/{$registrySourceInput.path}
+					</span>
+					<span class="text-gray-700 shrink-0">(default)</span>
+					<a href="/" class="ml-auto text-blue-700/60 hover:text-blue-500 transition-colors shrink-0 text-xs">load registry →</a>
+				</div>
+			{/if}
+
 			<!-- ── Filter bar ──────────────────────────────────────────────────────── -->
 			<div class="mb-4 flex flex-wrap items-center gap-3">
 
@@ -530,9 +555,9 @@
 				<div class="bg-red-900/20 border border-red-800 rounded-lg p-3 text-xs text-red-300 mb-4">{fetchError}</div>
 			{/if}
 
-			<!-- ── Token pair tabs (horizontal scroll) ─────────────────────────────── -->
+			<!-- ── Token pair tabs (wrapped rows) ─────────────────────────────────── -->
 			{#if pairTabs.length > 0}
-				<div class="mb-4 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none" style="scrollbar-width:none">
+				<div class="mb-4 flex flex-wrap items-center gap-1.5">
 					<button on:click={() => selectPair('All')}
 						class="shrink-0 text-xs px-3 py-1 rounded-full border transition-colors {selectedPair === 'All' ? 'bg-blue-700 border-blue-600 text-white' : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'}"
 					>All</button>
