@@ -26,6 +26,7 @@ export default defineConfig({
     sveltekit(),
   ],
   optimizeDeps: {
+    force: true,
     exclude: ["@rainlanguage/orderbook"],
   },
   build: {

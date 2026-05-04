@@ -1,10 +1,20 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { connect, disconnect } from '@wagmi/core';
 	import { injected } from '@wagmi/connectors';
 	import { wagmiConfig, signerAddress, connected } from 'svelte-wagmi';
 	import { get } from 'svelte/store';
 	import { STRATEGIES, type StrategyConfig, type OrderConfig } from '$lib/config/strategies';
 	import { buildOrderDeployment, type DeploymentResult } from '$lib/services/orderDeployment';
+	import { loadRegistryFromSource } from '$lib/services/registryLoader';
+	import {
+		registrySourceInput,
+		loadedRegistry,
+		hydrateFromStorage,
+		persistSource,
+		DEFAULT_SOURCE,
+		type LoadedRegistry,
+	} from '$lib/stores/registrySource';
 	import { sendOrderTransaction, sendOrderTransactionViaTurnkey } from '$lib/stores/wallet';
 	import { proposeApprovalsToSafe, proposeToSafe } from '$lib/services/safeDeployment';
 	import { connectTurnkeyWallet, type TurnkeyWallet } from '$lib/services/turnkeyService';
@@ -76,9 +86,74 @@
 		prevConnectedAddress = connectedAddress;
 	}
 
+	// ── Registry source ────────────────────────────────────────────────────────
+
+	// Local editable state for the four input fields
+	let registryOwner = DEFAULT_SOURCE.owner;
+	let registryRepo  = DEFAULT_SOURCE.repo;
+	let registryRef   = DEFAULT_SOURCE.ref;
+	let registryPath  = DEFAULT_SOURCE.path;
+
+	let registryLoadStatus: 'idle' | 'loading' | 'success' | 'error' = 'idle';
+	let registryLoadError = '';
+
+	// Derived: all four fields must be non-empty to allow loading
+	$: registrySourceValid =
+		registryOwner.trim().length > 0 &&
+		registryRepo.trim().length > 0 &&
+		registryRef.trim().length > 0 &&
+		registryPath.trim().length > 0;
+
+	async function loadRegistry() {
+		if (!registrySourceValid) return;
+		const source = {
+			owner: registryOwner.trim(),
+			repo:  registryRepo.trim(),
+			ref:   registryRef.trim(),
+			path:  registryPath.trim(),
+		};
+		registryLoadStatus = 'loading';
+		registryLoadError  = '';
+		try {
+			const result = await loadRegistryFromSource(source);
+			loadedRegistry.set(result);
+			registrySourceInput.set(source);
+			persistSource(source);
+			registryLoadStatus = 'success';
+		} catch (e) {
+			registryLoadError  = e instanceof Error ? e.message : String(e);
+			registryLoadStatus = 'error';
+		}
+	}
+
+	function clearRegistry() {
+		loadedRegistry.set(null);
+		registryLoadStatus = 'idle';
+		registryLoadError  = '';
+	}
+
 	// ── Strategy selection ─────────────────────────────────────────────────────
 
+	// Filter STRATEGIES to those where every order type exists in the loaded registry.
+	// Falls back to all STRATEGIES when no registry is loaded.
+	function computeAvailableStrategies(registry: LoadedRegistry | null): StrategyConfig[] {
+		if (!registry) return STRATEGIES;
+		const types = new Set(registry.entries.map((e) => e.strategyType));
+		return STRATEGIES.filter((s) => s.orders.every((o) => types.has(o.strategyType)));
+	}
+
+	let availableStrategies: StrategyConfig[] = STRATEGIES;
+	$: availableStrategies = computeAvailableStrategies($loadedRegistry);
+
 	let selectedStrategy: StrategyConfig = STRATEGIES[0];
+
+	// Auto-reselect when the available list changes (e.g. after loading a registry)
+	$: {
+		const strats = availableStrategies;
+		if (strats.length > 0 && !strats.find((s) => s.name === selectedStrategy.name)) {
+			selectStrategy(strats[0]);
+		}
+	}
 
 	function selectStrategy(s: StrategyConfig) {
 		selectedStrategy = s;
@@ -151,7 +226,12 @@
 		};
 		setOrderState(i, { status: 'loading', error: null });
 		try {
-			const result = await buildOrderDeployment(customizedOrder, connectedAddress);
+			// Use dynamic registry if loaded, otherwise fall back to static config
+			const result = await buildOrderDeployment(
+				customizedOrder,
+				connectedAddress,
+				$loadedRegistry ?? undefined,
+			);
 			setOrderState(i, { status: 'ready', result });
 		} catch (e) {
 			setOrderState(i, { status: 'error', error: e instanceof Error ? e.message : String(e) });
@@ -260,6 +340,16 @@
 			vaultStatus = 'error';
 		}
 	}
+
+	// ── Mount ──────────────────────────────────────────────────────────────────
+
+	onMount(() => {
+		const stored = hydrateFromStorage();
+		registryOwner = stored.owner;
+		registryRepo  = stored.repo;
+		registryRef   = stored.ref;
+		registryPath  = stored.path;
+	});
 </script>
 
 <!-- =====================================================================
@@ -353,25 +443,133 @@
 		{/if}
 	</section>
 
+	<!-- ── Registry source ────────────────────────────────────────────────── -->
+	<section class="mb-6">
+		<label class="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Registry source</label>
+		<div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 flex flex-col gap-3">
+
+			<!-- Input grid -->
+			<div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+				<label class="flex flex-col gap-1">
+					<span class="text-xs text-gray-500">owner</span>
+					<input
+						bind:value={registryOwner}
+						placeholder="ST0x-Technology"
+						class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
+					/>
+				</label>
+				<label class="flex flex-col gap-1">
+					<span class="text-xs text-gray-500">repo</span>
+					<input
+						bind:value={registryRepo}
+						placeholder="st0x-oracle-server"
+						class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
+					/>
+				</label>
+				<label class="flex flex-col gap-1">
+					<span class="text-xs text-gray-500">ref / commit</span>
+					<input
+						bind:value={registryRef}
+						placeholder="main or commit hash"
+						class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
+					/>
+				</label>
+				<label class="flex flex-col gap-1">
+					<span class="text-xs text-gray-500">path</span>
+					<input
+						bind:value={registryPath}
+						placeholder="strategy/registry"
+						class="text-xs px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-100 focus:outline-none focus:border-blue-500 font-mono"
+					/>
+				</label>
+			</div>
+
+			<!-- Actions + status row -->
+			<div class="flex items-center gap-3 flex-wrap">
+				<button
+					on:click={loadRegistry}
+					disabled={!registrySourceValid || registryLoadStatus === 'loading'}
+					class="text-xs px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 border border-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+				>
+					{#if registryLoadStatus === 'loading'}
+						<span class="inline-flex items-center gap-1.5">
+							<svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+							</svg>
+							loading…
+						</span>
+					{:else}
+						load registry
+					{/if}
+				</button>
+
+				{#if $loadedRegistry}
+					<button
+						on:click={clearRegistry}
+						class="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-500 transition-colors"
+					>clear</button>
+				{/if}
+
+				{#if registryLoadStatus === 'success' && $loadedRegistry}
+					<span class="text-xs text-green-400">
+						✓ {$loadedRegistry.entries.length} strategy type{$loadedRegistry.entries.length !== 1 ? 's' : ''} loaded
+						({availableStrategies.length} of {STRATEGIES.length} configured strategies available)
+					</span>
+				{/if}
+
+				{#if registryLoadStatus === 'error'}
+					<span class="text-xs text-red-400 break-words max-w-md">{registryLoadError}</span>
+				{/if}
+			</div>
+
+			<!-- Active source display -->
+			{#if $loadedRegistry}
+				<div class="text-xs font-mono text-gray-500 bg-gray-800/50 rounded px-2 py-1 w-fit">
+					active: {$loadedRegistry.source.owner}/{$loadedRegistry.source.repo}@{$loadedRegistry.source.ref.slice(0, 12)}/{$loadedRegistry.source.path}
+				</div>
+			{:else}
+				<div class="text-xs font-mono text-gray-600 bg-gray-800/30 rounded px-2 py-1 w-fit">
+					active: {DEFAULT_SOURCE.owner}/{DEFAULT_SOURCE.repo}@{DEFAULT_SOURCE.ref.slice(0, 12)}/{DEFAULT_SOURCE.path}
+					<span class="text-gray-700 ml-1">(static config — click "load registry" to override)</span>
+				</div>
+			{/if}
+		</div>
+	</section>
+
 	<!-- ── Strategy selector ───────────────────────────────────────────────── -->
 	<section class="mb-6">
-		<label class="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Strategy</label>
-		<div class="flex flex-wrap gap-2">
-			{#each STRATEGIES as s (s.name)}
-				<button
-					on:click={() => selectStrategy(s)}
-					class="text-sm px-4 py-2 rounded border transition-colors {selectedStrategy.name === s.name ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
-				>{s.name}</button>
-			{/each}
+		<div class="flex items-center gap-3 mb-2">
+			<label class="text-xs text-gray-400 uppercase tracking-wider">Strategy</label>
+			{#if $loadedRegistry && availableStrategies.length < STRATEGIES.length}
+				<span class="text-xs text-gray-600">
+					({availableStrategies.length} of {STRATEGIES.length} match loaded registry)
+				</span>
+			{/if}
 		</div>
+
+		{#if availableStrategies.length === 0}
+			<div class="text-xs text-yellow-500/80 bg-yellow-900/10 border border-yellow-900/40 rounded p-3 max-w-xl">
+				No configured strategies match the loaded registry's strategy types.
+				<button on:click={clearRegistry} class="underline ml-1 hover:text-yellow-400">clear registry</button>
+				to fall back to all strategies.
+			</div>
+		{:else}
+			<div class="flex flex-wrap gap-2">
+				{#each availableStrategies as s (s.name)}
+					<button
+						on:click={() => selectStrategy(s)}
+						class="text-sm px-4 py-2 rounded border transition-colors {selectedStrategy.name === s.name ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500'}"
+					>{s.name}</button>
+				{/each}
+			</div>
+		{/if}
 	</section>
 
 	{#if !isConnected}
 		<div class="mb-4 text-xs text-gray-500 bg-gray-900/50 rounded px-4 py-2 border border-gray-800">
 			{#if deploymentMode === 'turnkey'}
 				Connect Turnkey above to enable preview &amp; deploy.
-			{:else if deploymentMode === 'safe'}
-				Connect your wallet (header) to enable preview &amp; deploy.
 			{:else}
 				Connect your wallet (header) to enable preview &amp; deploy.
 			{/if}
