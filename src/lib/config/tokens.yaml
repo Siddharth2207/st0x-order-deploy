@@ -14,6 +14,7 @@ _anchors:
   wt_nvda: &wt_nvda "0xFb5B41acdbA20a3230F84BE995173CFb98b8D6E7"
   wt_amzn: &wt_amzn "0x997baE3EC193a249596d3708C3fAB7C501Bb8a53"
   wt_spym: &wt_spym "0x31C2C14134e6E3B7ef9478297F199331133Fc2d8"
+  t_spym: &t_spym "0x2289249984f1fa2ce86c4e8867e7eb819ea7df95"
   wt_iau: &wt_iau "0x1E46d7eFef64A833AFB1CD49299a7AD5B439f4d8"
   wt_sivr: &wt_sivr "0xEB7F3E4093C9d68253b6104FbbfF561F3eC0442F"
   wt_coin: &wt_coin "0x5cDa0E1CA4ce2af96315f7F8963C85399c172204"
@@ -679,6 +680,22 @@ strategies:
             output: *vault_spym
           input:
             input: *vault_usdc
+      - label: "Sell wtSPYM (Limit)"
+        description: "sell wtSPYM → receive USDC at a fixed SPLG limit price"
+        strategyType: "fixed-limit"
+        deploymentKey: "base"
+        selectTokens:
+          token1: *t_spym
+          token2: *wt_spym
+        fieldValues:
+          fixed-io: "1"
+        deposits:
+          token2: "0"
+        vaultIds:
+          output:
+            token2: *vault_spym
+          input:
+            token1: *vault_spym
   # ── wtIAU / USDC ──────────────────────────────────────────────────────────
   - name: "wtIAU/USDC"
     orders:
