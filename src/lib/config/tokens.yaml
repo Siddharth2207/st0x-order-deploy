@@ -15,6 +15,8 @@ _anchors:
   wt_amzn: &wt_amzn "0x997baE3EC193a249596d3708C3fAB7C501Bb8a53"
   wt_spym: &wt_spym "0x31C2C14134e6E3B7ef9478297F199331133Fc2d8"
   t_spym: &t_spym "0x2289249984f1fa2ce86c4e8867e7eb819ea7df95"
+  t_mstr: &t_mstr "0xff647ad8c4b065bd746911bb9ea1a33c38c63604"
+  t_coin: &t_coin "0xb616f8b391d1adc118fd7e4063526d5530d49b10"
   wt_iau: &wt_iau "0x1E46d7eFef64A833AFB1CD49299a7AD5B439f4d8"
   wt_sivr: &wt_sivr "0xEB7F3E4093C9d68253b6104FbbfF561F3eC0442F"
   wt_coin: &wt_coin "0x5cDa0E1CA4ce2af96315f7F8963C85399c172204"
@@ -23,24 +25,30 @@ _anchors:
   wt_pplt: &wt_pplt "0x82f5BAEE1076334357a34A19E04f7c282D51cE47"
   wt_sgov: &wt_sgov "0x78c31580c97101694c70022c83d570150c11e935"
   wt_rklb: &wt_rklb "0xf4f8c66085910d583c01f3b4e44bf731d4e2c565"
+  wt_qqqm: &wt_qqqm "0x823FF7Bbde2869aAe73A6CD53e7f614442836757"
+  wt_vwo: &wt_vwo "0x23ec6886b49D7ab123E9ee8e474D2fa7AB6Cbc2d"
+  wt_arkk: &wt_arkk "0x9FfF48B4535AF3765Ac9E1b164720EDc01DF8EE7"
   # ── Vault IDs (Rain "word IDs") ───────────────────────────────────────────
   # One vault ID per token — shared across buy/sell pairs so deposited tokens
   # flow directly between orders without manual transfers.
   # Values are arbitrary bytes32; sequential integers are easy to manage.
-  vault_usdc: &vault_usdc "0x000000000000000000000000000000000000000000000000000000000000fab4"
+  vault_usdc: &vault_usdc "0x00000000000000000000000000000000000000000000000000000000000ffabf"
   vault_mstr: &vault_mstr "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_tsla: &vault_tsla "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_nvda: &vault_nvda "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_amzn: &vault_amzn "0x0000000000000000000000000000000000000000000000000000000000000fab"
-  vault_spym: &vault_spym "0x0000000000000000000000000000000000000000000000000000000000000fab"
+  vault_spym: &vault_spym "0x0000000000000000000000000000000000000000000000000000000000baffab"
   vault_iau: &vault_iau "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_sivr: &vault_sivr "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_coin: &vault_coin "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_crcl: &vault_crcl "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_bmnr: &vault_bmnr "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_pplt: &vault_pplt "0x0000000000000000000000000000000000000000000000000000000000000fab"
-  vault_sgov: &vault_sgov "0x0000000000000000000000000000000000000000000000000000000000000fab"
+  vault_sgov: &vault_sgov "0x000000000000000000000000000000000000000000000000000000000000fab4"
   vault_rklb: &vault_rklb "0x0000000000000000000000000000000000000000000000000000000000000fab"
+  vault_qqqm: &vault_qqqm "0x000000000000000000000000000000000000000000000000000000000000fab6"
+  vault_vwo: &vault_vwo "0x000000000000000000000000000000000000000000000000000000000000fab7"
+  vault_arkk: &vault_arkk "0x000000000000000000000000000000000000000000000000000000000000fab8"
   vault_goog: &vault_goog "0x0000000000000000000000000000000000000000000000000000000000000fab"
   vault_aapl: &vault_aapl "0x0000000000000000000000000000000000000000000000000000000000000fab"
   # ── Pyth price feed IDs (Equity.US.X/USD) ────────────────────────────────
@@ -71,6 +79,9 @@ _anchors:
   feed_pplt: &feed_pplt "0x924571756974792e55532e50504c542f55534400000000000000000000000000"
   feed_sgov: &feed_sgov "0x924571756974792e55532e53474f562f55534400000000000000000000000000"
   feed_rklb: &feed_rklb "0x924571756974792e55532e524b4c422f55534400000000000000000000000000"
+  feed_qqqm: &feed_qqqm "0x924571756974792e55532e5151514d2f55534400000000000000000000000000"
+  feed_vwo: &feed_vwo "0x914571756974792e55532e56574f2f5553440000000000000000000000000000"
+  feed_arkk: &feed_arkk "0x924571756974792e55532e41524b4b2f55534400000000000000000000000000"
 # ---------------------------------------------------------------------------
 # Strategy definitions
 #
@@ -97,6 +108,7 @@ strategies:
           min-price: "0.01"
           max-price: "100000"
           max-staleness: "300"
+          future-timestamp-buffer: "20"
         deposits:
           output: "0"
         vaultIds:
@@ -116,6 +128,7 @@ strategies:
           min-price: "0.01"
           max-price: "100000"
           max-staleness: "300"
+          future-timestamp-buffer: "20"
         deposits:
           output: "0"
         vaultIds:
@@ -135,6 +148,7 @@ strategies:
           min-price: "0.01"
           max-price: "100000"
           max-staleness: "57600"
+          future-timestamp-buffer: "20"
         deposits:
           output: "0"
         vaultIds:
@@ -154,6 +168,7 @@ strategies:
           min-price: "0.01"
           max-price: "100000"
           max-staleness: "57600"
+          future-timestamp-buffer: "20"
         deposits:
           output: "0"
         vaultIds:
@@ -272,6 +287,22 @@ strategies:
             output: *vault_mstr
           input:
             input: *vault_usdc
+      - label: "Sell wtMSTR (Limit)"
+        description: "sell wtMSTR → receive USDC at a fixed MSTR limit price"
+        strategyType: "fixed-limit"
+        deploymentKey: "base"
+        selectTokens:
+          token1: *t_mstr
+          token2: *wt_mstr
+        fieldValues:
+          fixed-io: "1"
+        deposits:
+          token2: "0"
+        vaultIds:
+          output:
+            token2: *vault_spym
+          input:
+            token1: *vault_spym
   # ── wtTSLA / USDC ─────────────────────────────────────────────────────────
   - name: "wtTSLA/USDC"
     orders:
@@ -957,6 +988,22 @@ strategies:
             output: *vault_coin
           input:
             input: *vault_usdc
+      - label: "Sell wtCOIN (Limit)"
+        description: "sell wtCOIN → receive USDC at a fixed COIN limit price"
+        strategyType: "fixed-limit"
+        deploymentKey: "base"
+        selectTokens:
+          token1: *t_coin
+          token2: *wt_coin
+        fieldValues:
+          fixed-io: "1"
+        deposits:
+          token2: "0"
+        vaultIds:
+          output:
+            token2: *vault_spym
+          input:
+            token1: *vault_spym
   # ── wtCRCL / USDC ─────────────────────────────────────────────────────────
   - name: "wtCRCL/USDC"
     orders:
@@ -1402,5 +1449,230 @@ strategies:
         vaultIds:
           output:
             output: *vault_rklb
+          input:
+            input: *vault_usdc
+  # ── wtQQQM / USDC ────────────────────────────────────────────────────────
+  - name: "wtQQQM/USDC"
+    orders:
+      - label: "Buy wtQQQM"
+        description: "spend USDC → receive wtQQQM at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_qqqm
+        fieldValues:
+          pyth-pair: *feed_qqqm
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_qqqm
+      - label: "Sell wtQQQM"
+        description: "sell wtQQQM → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_qqqm
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_qqqm
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_qqqm
+          input:
+            input: *vault_usdc
+      - label: "Buy wtQQQM (Post-Market)"
+        description: "spend USDC → receive wtQQQM at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_qqqm
+        fieldValues:
+          pyth-pair: *feed_qqqm
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_qqqm
+      - label: "Sell wtQQQM (Post-Market)"
+        description: "sell wtQQQM → receive USDC at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_qqqm
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_qqqm
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_qqqm
+          input:
+            input: *vault_usdc
+  # ── wtVWO / USDC ─────────────────────────────────────────────────────────
+  - name: "wtVWO/USDC"
+    orders:
+      - label: "Buy wtVWO"
+        description: "spend USDC → receive wtVWO at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_vwo
+        fieldValues:
+          pyth-pair: *feed_vwo
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_vwo
+      - label: "Sell wtVWO"
+        description: "sell wtVWO → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_vwo
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_vwo
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_vwo
+          input:
+            input: *vault_usdc
+      - label: "Buy wtVWO (Post-Market)"
+        description: "spend USDC → receive wtVWO at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_vwo
+        fieldValues:
+          pyth-pair: *feed_vwo
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_vwo
+      - label: "Sell wtVWO (Post-Market)"
+        description: "sell wtVWO → receive USDC at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_vwo
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_vwo
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_vwo
+          input:
+            input: *vault_usdc
+  # ── wtARKK / USDC ────────────────────────────────────────────────────────
+  - name: "wtARKK/USDC"
+    orders:
+      - label: "Buy wtARKK"
+        description: "spend USDC → receive wtARKK at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_arkk
+        fieldValues:
+          pyth-pair: *feed_arkk
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_arkk
+      - label: "Sell wtARKK"
+        description: "sell wtARKK → receive USDC at Pyth price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_arkk
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_arkk
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "300"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_arkk
+          input:
+            input: *vault_usdc
+      - label: "Buy wtARKK (Post-Market)"
+        description: "spend USDC → receive wtARKK at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth-inv"
+        selectTokens:
+          output: *base_usdc
+          input: *wt_arkk
+        fieldValues:
+          pyth-pair: *feed_arkk
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_usdc
+          input:
+            input: *vault_arkk
+      - label: "Sell wtARKK (Post-Market)"
+        description: "sell wtARKK → receive USDC at Pyth post-market price"
+        strategyType: "fixed-spread"
+        deploymentKey: "base-pyth"
+        selectTokens:
+          output: *wt_arkk
+          input: *base_usdc
+        fieldValues:
+          pyth-pair: *feed_arkk
+          baseline-multiplier: "1.001"
+          oracle-price-timeout: "57600"
+        deposits:
+          output: "0"
+        vaultIds:
+          output:
+            output: *vault_arkk
           input:
             input: *vault_usdc

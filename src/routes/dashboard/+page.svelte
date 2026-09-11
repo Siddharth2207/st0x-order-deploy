@@ -5,9 +5,9 @@
 	import { injected } from '@wagmi/connectors';
 	import { wagmiConfig, signerAddress, connected } from 'svelte-wagmi';
 	import { sendTransaction, waitForTransactionReceipt } from '@wagmi/core';
-	import type { RaindexClient, RaindexOrder, RaindexVault, GetOrdersTokenFilter } from '@rainlanguage/orderbook';
+	import type { RaindexClient, RaindexOrder, RaindexVault, RaindexOrderQuote, GetOrdersTokenFilter } from '@rainlanguage/raindex';
 	import type { Address } from 'viem';
-	import { getOrderbookClient } from '$lib/services/raindexClient';
+	import { getOrderbookClient, SETTINGS_URL } from '$lib/services/raindexClient';
 	import { STRATEGIES } from '$lib/config/strategies';
 	import {
 		proposeSingleTx,
@@ -21,6 +21,7 @@
 
 
 	const PAGE_SIZE = 25;
+	const DEFAULT_OWNER = '0x9611b85BCe74Ca8c7f43a01766c4eeb9eC2D0531';
 
 	// ── Raindex client ─────────────────────────────────────────────────────────
 	let client: RaindexClient | null = null;
@@ -57,8 +58,8 @@
 	$: connectedAddress = deploymentMode === 'turnkey' ? (turnkeyWallet?.address ?? '') : ($signerAddress ?? '');
 
 	// ── Filters ────────────────────────────────────────────────────────────────
-	let ownerFilterInput = '';
-	let ownerFilter = '';
+	let ownerFilterInput = DEFAULT_OWNER;
+	let ownerFilter = DEFAULT_OWNER;
 	let showInactive = false;
 	let selectedPair = 'All';
 
@@ -110,6 +111,43 @@
 
 	// ── Expanded state ─────────────────────────────────────────────────────────
 	let expandedOrders = new Set<string>(); // orderHash
+
+	// ── Order quotes (loaded lazily on expand) ─────────────────────────────────
+	type QuoteState = {
+		status: 'idle' | 'loading' | 'done' | 'error';
+		quotes: RaindexOrderQuote[];
+		error: string;
+	};
+	const EMPTY_QUOTE: QuoteState = { status: 'idle', quotes: [], error: '' };
+	let quoteStates: Record<string, QuoteState> = {};
+
+	function getQuoteState(hash: string): QuoteState {
+		return quoteStates[hash] ?? EMPTY_QUOTE;
+	}
+
+	async function loadQuotes(order: RaindexOrder, force = false) {
+		const key = order.orderHash;
+		const existing = quoteStates[key];
+		if (!force && existing && (existing.status === 'loading' || existing.status === 'done')) return;
+		quoteStates = { ...quoteStates, [key]: { status: 'loading', quotes: [], error: '' } };
+		try {
+			const result = await order.getQuotes();
+			if (result.error) throw new Error(result.error.readableMsg);
+			quoteStates = {
+				...quoteStates,
+				[key]: { status: 'done', quotes: result.value, error: '' }
+			};
+		} catch (e) {
+			quoteStates = {
+				...quoteStates,
+				[key]: {
+					status: 'error',
+					quotes: [],
+					error: e instanceof Error ? e.message : String(e)
+				}
+			};
+		}
+	}
 
 	// ── Remove order state ─────────────────────────────────────────────────────
 	type RemoveState = { status: 'idle' | 'busy' | 'success' | 'error'; error: string };
@@ -261,8 +299,13 @@
 	function nextPage() { if (currentPage * PAGE_SIZE < totalCount) { currentPage++; fetchOrders(); } }
 
 	function toggleOrder(hash: string) {
-		if (expandedOrders.has(hash)) expandedOrders.delete(hash);
-		else expandedOrders.add(hash);
+		if (expandedOrders.has(hash)) {
+			expandedOrders.delete(hash);
+		} else {
+			expandedOrders.add(hash);
+			const order = orders.find((o) => o.orderHash === hash);
+			if (order) loadQuotes(order);
+		}
 		expandedOrders = expandedOrders;
 	}
 
@@ -272,7 +315,11 @@
 	function fmtAddress(addr: string) { return addr.slice(0, 6) + '…' + addr.slice(-4); }
 	function fmtTimestamp(ts: bigint) { return new Date(Number(ts) * 1000).toLocaleString(); }
 	function getRaindexOrderUrl(order: RaindexOrder) {
-		return `https://v6.raindex.finance/orders/${order.chainId}-${order.orderbook}-${order.orderHash}`;
+		return `https://v6.raindex.finance/orders/${order.chainId}-${order.raindex}-${order.orderHash}`;
+	}
+	function fmtQuotePrice(quote: RaindexOrderQuote): string {
+		if (!quote.success || !quote.data) return '—';
+		return `${quote.data.formattedRatio} (${quote.data.formattedInverseRatio})`;
 	}
 
 	function vaultIdToBytes32(id: bigint): string {
@@ -300,7 +347,7 @@
 				const config = get(wagmiConfig);
 				if (!config) throw new Error('Wagmi not initialised');
 				const hash = await sendTransaction(config, {
-					to: order.orderbook as Hex,
+					to: order.raindex as Hex,
 					data: calldata,
 					chainId: order.chainId
 				});
@@ -313,10 +360,10 @@
 				const txServiceUrl = SAFE_TX_SERVICE_URLS[order.chainId];
 				if (!txServiceUrl) throw new Error(`No Safe service for chain ${order.chainId}`);
 				const nonce = await getNextNonce(txServiceUrl, safeAddress);
-				await proposeSingleTx(txServiceUrl, order.chainId, safeAddress, connectedAddress, provider, order.orderbook, calldata, nonce);
+				await proposeSingleTx(txServiceUrl, order.chainId, safeAddress, connectedAddress, provider, order.raindex, calldata, nonce);
 			} else {
 				if (!turnkeyWallet) throw new Error('Turnkey wallet not connected');
-				await sendViaTurnkey([{ to: order.orderbook, data: calldata }], order.chainId);
+				await sendViaTurnkey([{ to: order.raindex, data: calldata }], order.chainId);
 			}
 
 			removeStates = { ...removeStates, [key]: { status: 'success', error: '' } };
@@ -338,7 +385,7 @@
 			tokenAddress: vault.token.address,
 			vaultId: vaultIdToBytes32(vault.vaultId),
 			amount: state.amount.trim() || 'all',
-			orderbookAddress: vault.orderbook,
+			orderbookAddress: vault.raindex,
 			chainId: vault.chainId
 		};
 
@@ -460,6 +507,19 @@
 				{/each}
 			</div>
 		{:else if !initError}
+
+			<!-- ── Active settings source ─────────────────────────────────────────── -->
+			<div class="mb-4 flex items-center gap-2 text-xs bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2">
+				<span class="text-gray-600 shrink-0">settings:</span>
+				<a
+					href="https://github.com/rainlanguage/rain.strategies/blob/main/settings.yaml"
+					target="_blank"
+					rel="noreferrer"
+					class="font-mono text-blue-400/80 hover:text-blue-300 truncate"
+					title={SETTINGS_URL}
+				>rain.strategies/main/settings.yaml</a>
+				<span class="text-green-600/70 shrink-0">✓ live</span>
+			</div>
 
 			<!-- ── Active registry source indicator ──────────────────────────────── -->
 			{#if $loadedRegistry}
@@ -666,7 +726,61 @@
 
 							<!-- ── Expanded panel ─────────────────────────────────────────── -->
 							{#if isExpanded}
+								{@const qs = getQuoteState(order.orderHash)}
 								<div class="bg-gray-900/40 border-t border-gray-800 px-6 py-4 space-y-4">
+
+									<!-- Order quotes -->
+									<div>
+										<div class="flex items-center gap-2 mb-2">
+											<div class="text-xs text-gray-600 uppercase tracking-wider">Order quotes</div>
+											<button
+												type="button"
+												on:click|stopPropagation={() => loadQuotes(order, true)}
+												disabled={qs.status === 'loading'}
+												class="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300 disabled:opacity-40 transition-colors"
+											>{qs.status === 'loading' ? 'quoting…' : 'refresh'}</button>
+										</div>
+										{#if qs.status === 'loading' && qs.quotes.length === 0}
+											<div class="text-xs text-gray-600 py-2">fetching quotes…</div>
+										{:else if qs.status === 'error'}
+											<div class="text-xs text-red-400 break-words">{qs.error}</div>
+										{:else if qs.quotes.length === 0}
+											<div class="text-xs text-gray-600 py-2">no quotes</div>
+										{:else}
+											<div class="rounded-lg border border-gray-800 overflow-hidden">
+												<div
+													class="grid gap-0 border-b border-gray-800 bg-gray-950/80 text-xs text-gray-600 uppercase tracking-wider"
+													style="grid-template-columns: 1.2fr 1fr 1.4fr 1fr"
+												>
+													<div class="px-3 py-2">Pair</div>
+													<div class="px-3 py-2">Max output</div>
+													<div class="px-3 py-2">Price</div>
+													<div class="px-3 py-2">Max input</div>
+												</div>
+												{#each qs.quotes as quote}
+													<div
+														class="grid gap-0 border-b border-gray-800/60 last:border-0 text-xs"
+														style="grid-template-columns: 1.2fr 1fr 1.4fr 1fr"
+													>
+														{#if quote.success && quote.data}
+															<div class="px-3 py-2 text-blue-300 font-semibold truncate" title={quote.pair.pairName}>{quote.pair.pairName}</div>
+															<div class="px-3 py-2 text-gray-200 font-mono">
+																{quote.data.formattedMaxOutput}
+																{#if quote.data.formattedMaxOutputAsPercentOfVault}
+																	<div class="text-gray-600 mt-0.5">{quote.data.formattedMaxOutputAsPercentOfVault}% of vault</div>
+																{/if}
+															</div>
+															<div class="px-3 py-2 text-gray-300 font-mono break-all" title={fmtQuotePrice(quote)}>{fmtQuotePrice(quote)}</div>
+															<div class="px-3 py-2 text-gray-200 font-mono">{quote.data.formattedMaxInput}</div>
+														{:else}
+															<div class="px-3 py-2 text-blue-300 font-semibold truncate">{quote.pair.pairName}</div>
+															<div class="px-3 py-2 text-red-400 col-span-3 break-words">{quote.error ?? 'quote failed'}</div>
+														{/if}
+													</div>
+												{/each}
+											</div>
+										{/if}
+									</div>
 
 									<!-- Vault sections -->
 									{#each getVaultSections(order) as section}
@@ -769,8 +883,8 @@
 											<div class="font-mono text-xs text-gray-400 break-all">{order.owner}</div>
 										</div>
 										<div>
-											<div class="text-xs text-gray-700 mb-0.5">orderbook</div>
-											<div class="font-mono text-xs text-gray-400 break-all">{order.orderbook}</div>
+											<div class="text-xs text-gray-700 mb-0.5">raindex</div>
+											<div class="font-mono text-xs text-gray-400 break-all">{order.raindex}</div>
 										</div>
 										<div>
 											<div class="text-xs text-gray-700 mb-0.5">added</div>

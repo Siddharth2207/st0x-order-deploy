@@ -28,7 +28,7 @@ monitoring orders and managing vault balances.
 | Framework | SvelteKit 2 + Svelte 4                      |
 | Wallet    | svelte-wagmi + @wagmi/core                  |
 | On-chain  | viem 2                                      |
-| Orderbook | @rainlanguage/orderbook                     |
+| Orderbook | @rainlanguage/raindex                       |
 | Safe      | @safe-global/api-kit (Safe TX service REST) |
 | Turnkey   | @turnkey/http + @turnkey/viem               |
 | Styling   | Tailwind CSS 3                              |

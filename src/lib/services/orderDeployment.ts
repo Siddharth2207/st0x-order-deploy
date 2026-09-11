@@ -2,15 +2,15 @@
  * Generic order deployment service.
  *
  * Fetches the .rain strategy file and shared settings.yaml from GitHub,
- * then builds a DotrainOrderGui instance for any strategy type and returns
+ * then builds a RaindexOrderBuilder instance for any strategy type and returns
  * DeploymentTransactionArgs ready for an EOA wallet or SAFE.
  *
  * All strategy-specific params (field values, token keys, deposit amounts)
  * come from the OrderConfig — add new strategy types purely in tokens.yaml.
  */
 
-import { DotrainOrderGui } from "@rainlanguage/orderbook";
-import type { DeploymentTransactionArgs } from "@rainlanguage/orderbook";
+import { RaindexOrderBuilder } from "@rainlanguage/raindex";
+import type { DeploymentTransactionArgs } from "@rainlanguage/raindex";
 import type { OrderConfig } from "$lib/config/strategies";
 import { REGISTRY_COMMIT } from "$lib/config/strategies";
 import type { LoadedRegistry } from "$lib/services/registryLoader";
@@ -89,7 +89,7 @@ async function getRegistryConfig(): Promise<{
 
 /**
  * Fetch the .rain file for a strategy type and the shared settings.yaml,
- * then instantiate a DotrainOrderGui for the given deployment key.
+ * then instantiate a RaindexOrderBuilder for the given deployment key.
  *
  * When a dynamic registry is provided it takes precedence over the static
  * GitHub commit URL, allowing runtime strategy source selection.
@@ -98,7 +98,7 @@ async function buildGui(
   strategyType: string,
   deploymentKey: string,
   registry?: LoadedRegistry,
-): Promise<DotrainOrderGui> {
+): Promise<RaindexOrderBuilder> {
   let strategyUrl: string;
   let settingsUrl: string;
 
@@ -129,7 +129,7 @@ async function buildGui(
     fetchText(settingsUrl),
   ]);
 
-  const result = await DotrainOrderGui.newWithDeployment(
+  const result = await RaindexOrderBuilder.newWithDeployment(
     dotrain,
     [settings],
     deploymentKey,
@@ -161,16 +161,31 @@ export async function buildOrderDeployment(
   const gui = await buildGui(order.strategyType, order.deploymentKey, registry);
 
   for (const [key, address] of Object.entries(order.selectTokens)) {
-    await gui.setSelectToken(key, address);
+    const selectResult = await gui.setSelectToken(key, address);
+    if (selectResult.error) {
+      throw new Error(
+        `Failed to set select token ${key}: ${selectResult.error.readableMsg}`,
+      );
+    }
   }
 
   for (const [binding, value] of Object.entries(order.fieldValues)) {
-    gui.setFieldValue(binding, value);
+    const fieldResult = gui.setFieldValue(binding, value);
+    if (fieldResult.error) {
+      throw new Error(
+        `Failed to set field ${binding}: ${fieldResult.error.readableMsg}`,
+      );
+    }
   }
 
   for (const [tokenKey, amount] of Object.entries(order.deposits)) {
     if (amount && amount !== "0") {
-      gui.setDeposit(tokenKey, amount);
+      const depositResult = await gui.setDeposit(tokenKey, amount);
+      if (depositResult.error) {
+        throw new Error(
+          `Failed to set deposit ${tokenKey}: ${depositResult.error.readableMsg}`,
+        );
+      }
     }
   }
 

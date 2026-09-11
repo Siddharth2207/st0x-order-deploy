@@ -27,7 +27,7 @@ export default defineConfig({
   ],
   optimizeDeps: {
     force: true,
-    exclude: ["@rainlanguage/orderbook"],
+    exclude: ["@rainlanguage/raindex"],
   },
   build: {
     target: "esnext",

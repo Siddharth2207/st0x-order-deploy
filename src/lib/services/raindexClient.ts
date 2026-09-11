@@ -1,13 +1,12 @@
 /**
- * Creates a RaindexClient from the rain.strategies registry settings,
+ * Creates a RaindexClient from the latest rain.strategies settings.yaml,
  * stripping local-db-sync config so no DB callback is required.
  */
-import { RaindexClient } from "@rainlanguage/orderbook";
-import { REGISTRY_COMMIT } from "$lib/config/strategies";
+import { RaindexClient } from "@rainlanguage/raindex";
 
-const REGISTRY_URL = `https://raw.githubusercontent.com/ST0x-Technology/st0x-oracle-server/${REGISTRY_COMMIT}/strategy/registry`;
-const REGISTRY_FALLBACK_URL =
-  "https://raw.githubusercontent.com/ST0x-Technology/st0x-oracle-server/main/strategy/registry";
+/** Latest shared Raindex settings (networks, subgraphs, raindexes). */
+export const SETTINGS_URL =
+  "https://raw.githubusercontent.com/rainlanguage/rain.strategies/main/settings.yaml";
 
 let _client: RaindexClient | null = null;
 
@@ -29,29 +28,12 @@ function stripLocalDb(yaml: string): string {
 export async function getOrderbookClient(): Promise<RaindexClient> {
   if (_client) return _client;
 
-  // 1. Fetch the registry manifest to get the settings.yaml URL
-  let registryResp = await fetch(REGISTRY_URL);
-  if (!registryResp.ok) {
-    registryResp = await fetch(REGISTRY_FALLBACK_URL);
-  }
-  if (!registryResp.ok) {
-    throw new Error(`Failed to fetch registry: HTTP ${registryResp.status}`);
-  }
-  const registryText = await registryResp.text();
-  // First non-empty line of the registry file is the settings URL
-  const settingsUrl = registryText.trim().split("\n")[0].trim();
-  if (!settingsUrl || !settingsUrl.startsWith("http")) {
-    throw new Error(`Invalid settings URL in registry: ${settingsUrl}`);
-  }
-
-  // 2. Fetch and clean the settings YAML
-  const settingsResp = await fetch(settingsUrl);
+  const settingsResp = await fetch(SETTINGS_URL);
   if (!settingsResp.ok) {
     throw new Error(`Failed to fetch settings: ${settingsResp.statusText}`);
   }
   const settingsYaml = stripLocalDb(await settingsResp.text());
 
-  // 3. Create the client — no DB callbacks needed after stripping local-db config
   const result = await RaindexClient.new([settingsYaml]);
   if (result.error) {
     throw new Error(result.error.readableMsg);
