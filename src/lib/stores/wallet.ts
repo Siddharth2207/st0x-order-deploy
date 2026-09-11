@@ -7,7 +7,7 @@ import { get } from "svelte/store";
 import { signerAddress, connected, wagmiConfig } from "svelte-wagmi";
 import { sendTransaction, waitForTransactionReceipt } from "@wagmi/core";
 import { type Hex } from "viem";
-import type { DeploymentTransactionArgs } from "@rainlanguage/orderbook";
+import type { DeploymentTransactionArgs } from "@rainlanguage/raindex";
 import { sendViaTurnkey } from "$lib/services/turnkeyService";
 
 // Re-export svelte-wagmi stores under cleaner names
@@ -33,7 +33,7 @@ export async function sendOrderTransaction(
   }
 
   const txHash = await sendTransaction(config, {
-    to: deploymentArgs.orderbookAddress as Hex,
+    to: deploymentArgs.raindexAddress as Hex,
     data: deploymentArgs.deploymentCalldata as Hex,
     chainId: deploymentArgs.chainId,
   });
@@ -55,7 +55,7 @@ export async function sendOrderTransactionViaTurnkey(
     transactions.push({ to: approval.token, data: approval.calldata });
   }
   transactions.push({
-    to: deploymentArgs.orderbookAddress,
+    to: deploymentArgs.raindexAddress,
     data: deploymentArgs.deploymentCalldata,
   });
 

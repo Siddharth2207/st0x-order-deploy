@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { RaindexOrder } from '@rainlanguage/orderbook';
+	import type { RaindexOrder } from '@rainlanguage/raindex';
 	import { getOrderbookClient } from '$lib/services/raindexClient';
 	import { feedAlias } from '$lib/config/feedIds';
 
@@ -136,7 +136,7 @@
 		const header = [
 			'orderHash',
 			'chainId',
-			'orderbook',
+			'raindex',
 			'type',
 			'inputToken',
 			'outputToken',
@@ -148,7 +148,7 @@
 			[
 				order.orderHash,
 				order.chainId,
-				order.orderbook,
+				order.raindex,
 				getOrderType(order),
 				getUniqueSymbols(order.inputsList),
 				getUniqueSymbols(order.outputsList),

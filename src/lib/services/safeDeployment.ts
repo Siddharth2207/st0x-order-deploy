@@ -10,7 +10,7 @@
  * polyfills.
  */
 
-import type { DeploymentTransactionArgs } from "@rainlanguage/orderbook";
+import type { DeploymentTransactionArgs } from "@rainlanguage/raindex";
 import { hashTypedData, getAddress } from "viem";
 import type { Hex } from "viem";
 
@@ -242,7 +242,7 @@ export async function proposeToSafe(
     safeAddress,
     signerAddress,
     signerProvider,
-    deploymentArgs.orderbookAddress,
+    deploymentArgs.raindexAddress,
     deploymentArgs.deploymentCalldata as string,
     nonce,
   );

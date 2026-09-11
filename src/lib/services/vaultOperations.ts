@@ -6,10 +6,10 @@
  *   safe    — propose to Safe multisig queue
  *   turnkey — sign directly with a Turnkey-backed viem WalletClient
  *
- * WASM note: Float from @rainlanguage/orderbook requires the WASM module to be
- * initialised (this happens automatically on first use of DotrainOrderGui).
+ * WASM note: Float from @rainlanguage/raindex requires the WASM module to be
+ * initialised (this happens automatically on first use of RaindexOrderBuilder).
  * If you use vault operations without first building an order, call any
- * DotrainOrderGui async method once to initialise WASM.
+ * RaindexOrderBuilder async method once to initialise WASM.
  */
 
 import { get } from "svelte/store";
@@ -26,7 +26,7 @@ import {
 import { sendViaTurnkey } from "./turnkeyService";
 import { base, polygon, arbitrum } from "viem/chains";
 import type { Chain } from "viem";
-import { Float } from "@rainlanguage/orderbook";
+import { Float } from "@rainlanguage/raindex";
 import {
   proposeSingleTx,
   getNextNonce,

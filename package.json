@@ -31,7 +31,7 @@
     "vite-plugin-yaml": "^1.0.5"
   },
   "dependencies": {
-    "@rainlanguage/orderbook": "^0.0.1-alpha.229",
+    "@rainlanguage/raindex": "^0.0.1-alpha.250",
     "@safe-global/api-kit": "2.5.5",
     "@safe-global/protocol-kit": "4.1.0",
     "@turnkey/api-key-stamper": "^0.6.5",
